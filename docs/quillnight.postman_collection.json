@@ -1,0 +1,104 @@
+{
+  "info": {
+    "name": "Quillnight Sidecar",
+    "description": "Local API for the Quillnight sidecar (http://127.0.0.1:8756). Run the sidecar in stub mode first (see docs/API-TESTING.md). Set the collection variables (base_url is pre-filled; fill book_id/scene_id/etc. from earlier responses, or use the Swagger UI at /docs). The complete, always-current set can also be imported via Import > Link > http://127.0.0.1:8756/openapi.json .",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8756" },
+    { "key": "book_id", "value": "" },
+    { "key": "scene_id", "value": "" },
+    { "key": "element_id", "value": "" },
+    { "key": "edge_id", "value": "" },
+    { "key": "codex_id", "value": "" },
+    { "key": "log_id", "value": "" },
+    { "key": "note_id", "value": "" },
+    { "key": "src_book_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        { "name": "GET /", "request": { "method": "GET", "url": { "raw": "{{base_url}}/", "host": ["{{base_url}}"], "path": [""] } } },
+        { "name": "GET /health", "request": { "method": "GET", "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] } } }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        { "name": "GET /settings", "request": { "method": "GET", "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } },
+        { "name": "PATCH /settings", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"values\": { \"theme_mode\": \"night\", \"delight_level\": \"playful\", \"ai_mode\": \"offline\" }\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } }
+      ]
+    },
+    {
+      "name": "Books",
+      "item": [
+        { "name": "POST /books (create)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"My Novel\",\n  \"book_type\": \"story_book\",\n  \"logline\": \"a test\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books", "host": ["{{base_url}}"], "path": ["books"] } } },
+        { "name": "GET /books (list)", "request": { "method": "GET", "url": { "raw": "{{base_url}}/books", "host": ["{{base_url}}"], "path": ["books"] } } },
+        { "name": "GET /books/:id", "request": { "method": "GET", "url": { "raw": "{{base_url}}/books/{{book_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}"] } } },
+        { "name": "PATCH /books/:id", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"title\": \"Renamed\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books/{{book_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}"] } } },
+        { "name": "POST /books/:id/convert", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"book_type\": \"movie_script\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books/{{book_id}}/convert", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "convert"] } } },
+        { "name": "DELETE /books/:id", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/books/{{book_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}"] } } }
+      ]
+    },
+    {
+      "name": "Scenes",
+      "item": [
+        { "name": "POST /scenes", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"node_type\": \"scene\",\n  \"title\": \"Opening\",\n  \"description\": \"the hero wakes\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/scenes", "host": ["{{base_url}}"], "path": ["scenes"] } } },
+        { "name": "GET /scenes", "request": { "method": "GET", "url": { "raw": "{{base_url}}/scenes", "host": ["{{base_url}}"], "path": ["scenes"] } } },
+        { "name": "GET /scenes/:id", "request": { "method": "GET", "url": { "raw": "{{base_url}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}"] } } },
+        { "name": "PATCH /scenes/:id", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"title\": \"Opening (rev)\", \"description\": \"the hero wakes at dawn\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}"] } } },
+        { "name": "DELETE /scenes/:id", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}"] } } },
+        { "name": "GET /scenes/:id/elements", "request": { "method": "GET", "url": { "raw": "{{base_url}}/scenes/{{scene_id}}/elements", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}", "elements"] } } },
+        { "name": "POST /scenes/:id/elements", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"element_type\": \"scene_heading\", \"text\": \"INT. HOUSE - DAY\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/scenes/{{scene_id}}/elements", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}", "elements"] } } },
+        { "name": "PATCH /scenes/elements/:elid", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"text\": \"INT. HOUSE - NIGHT\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/scenes/elements/{{element_id}}", "host": ["{{base_url}}"], "path": ["scenes", "elements", "{{element_id}}"] } } },
+        { "name": "POST /scenes/:id/elements/reorder", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "[\"{{element_id}}\"]", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/scenes/{{scene_id}}/elements/reorder", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}", "elements", "reorder"] } } }
+      ]
+    },
+    {
+      "name": "Canvas",
+      "item": [
+        { "name": "GET /books/:id/canvas", "request": { "method": "GET", "url": { "raw": "{{base_url}}/books/{{book_id}}/canvas", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "canvas"] } } },
+        { "name": "POST add scene to canvas", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"canvas_x\": 120, \"canvas_y\": 80, \"color\": \"#8b5cf6\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books/{{book_id}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "scenes", "{{scene_id}}"] } } },
+        { "name": "PATCH node position", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"canvas_x\": 200, \"canvas_y\": 140 }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books/{{book_id}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "scenes", "{{scene_id}}"] } } },
+        { "name": "DELETE unlink from canvas", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/books/{{book_id}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "scenes", "{{scene_id}}"] } } },
+        { "name": "GET /books/:id/edges", "request": { "method": "GET", "url": { "raw": "{{base_url}}/books/{{book_id}}/edges", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "edges"] } } },
+        { "name": "POST /books/:id/edges", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"source_scene_id\": \"{{scene_id}}\", \"target_scene_id\": \"{{scene_id}}\", \"connection_type\": \"sequence\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/books/{{book_id}}/edges", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "edges"] } } },
+        { "name": "DELETE /edges/:id", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/edges/{{edge_id}}", "host": ["{{base_url}}"], "path": ["edges", "{{edge_id}}"] } } },
+        { "name": "POST move scene (?from_book_id)", "request": { "method": "POST", "url": { "raw": "{{base_url}}/books/{{book_id}}/scenes/{{scene_id}}/move?from_book_id={{src_book_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "scenes", "{{scene_id}}", "move"], "query": [{ "key": "from_book_id", "value": "{{src_book_id}}" }] } } },
+        { "name": "POST copy scene", "request": { "method": "POST", "url": { "raw": "{{base_url}}/books/{{book_id}}/scenes/{{scene_id}}/copy", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "scenes", "{{scene_id}}", "copy"] } } }
+      ]
+    },
+    {
+      "name": "Codex",
+      "item": [
+        { "name": "POST /codex", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"entry_type\": \"character\",\n  \"name\": \"Aria\",\n  \"summary\": \"the protagonist\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/codex", "host": ["{{base_url}}"], "path": ["codex"] } } },
+        { "name": "GET /codex?entry_type=character", "request": { "method": "GET", "url": { "raw": "{{base_url}}/codex?entry_type=character", "host": ["{{base_url}}"], "path": ["codex"], "query": [{ "key": "entry_type", "value": "character" }] } } },
+        { "name": "PATCH /codex/:id", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"summary\": \"the reluctant protagonist\", \"custom_fields\": { \"eye_color\": \"green\" } }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/codex/{{codex_id}}", "host": ["{{base_url}}"], "path": ["codex", "{{codex_id}}"] } } },
+        { "name": "DELETE /codex/:id", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/codex/{{codex_id}}", "host": ["{{base_url}}"], "path": ["codex", "{{codex_id}}"] } } },
+        { "name": "POST link codex to scene", "request": { "method": "POST", "url": { "raw": "{{base_url}}/codex/{{codex_id}}/scenes/{{scene_id}}", "host": ["{{base_url}}"], "path": ["codex", "{{codex_id}}", "scenes", "{{scene_id}}"] } } },
+        { "name": "GET /scenes/:id/codex", "request": { "method": "GET", "url": { "raw": "{{base_url}}/scenes/{{scene_id}}/codex", "host": ["{{base_url}}"], "path": ["scenes", "{{scene_id}}", "codex"] } } }
+      ]
+    },
+    {
+      "name": "LLM / Enhance",
+      "item": [
+        { "name": "POST /llm/enhance (SSE stream)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "text/event-stream" }], "body": { "mode": "raw", "raw": "{\n  \"mode\": \"grammar\",\n  \"text\": \"the hero wakes\",\n  \"scene_id\": \"{{scene_id}}\",\n  \"book_id\": \"{{book_id}}\",\n  \"field\": \"description\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/llm/enhance", "host": ["{{base_url}}"], "path": ["llm", "enhance"] }, "description": "Streams Server-Sent Events. Postman shows the streamed body. Run the sidecar with QUILLNIGHT_LLM_STUB=1." } },
+        { "name": "POST /llm/log/:id/accept", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"accepted\": true }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/llm/log/{{log_id}}/accept", "host": ["{{base_url}}"], "path": ["llm", "log", "{{log_id}}", "accept"] } } },
+        { "name": "POST /llm/groq-key", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"key\": \"gsk_...\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/llm/groq-key", "host": ["{{base_url}}"], "path": ["llm", "groq-key"] } } },
+        { "name": "DELETE /llm/groq-key", "request": { "method": "DELETE", "url": { "raw": "{{base_url}}/llm/groq-key", "host": ["{{base_url}}"], "path": ["llm", "groq-key"] } } },
+        { "name": "POST /llm/test-connection", "request": { "method": "POST", "url": { "raw": "{{base_url}}/llm/test-connection", "host": ["{{base_url}}"], "path": ["llm", "test-connection"] } } }
+      ]
+    },
+    {
+      "name": "Voice / dictation",
+      "item": [
+        { "name": "POST /voice/transcribe (binary body)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "audio/webm" }], "body": { "mode": "file", "file": { "src": "/path/to/clip.webm" } }, "url": { "raw": "{{base_url}}/voice/transcribe", "host": ["{{base_url}}"], "path": ["voice", "transcribe"] }, "description": "Body = raw audio bytes (Postman: Body > binary > select a file). Max 100 MB. Run with QUILLNIGHT_STT_STUB=1 for a fixed transcript." } },
+        { "name": "GET /voice", "request": { "method": "GET", "url": { "raw": "{{base_url}}/voice", "host": ["{{base_url}}"], "path": ["voice"] } } },
+        { "name": "POST /voice/:id/attach", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"attached_entity_type\": \"scene\", \"attached_entity_id\": \"{{scene_id}}\" }", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/voice/{{note_id}}/attach", "host": ["{{base_url}}"], "path": ["voice", "{{note_id}}", "attach"] } } },
+        { "name": "POST /voice/:id/discard", "request": { "method": "POST", "url": { "raw": "{{base_url}}/voice/{{note_id}}/discard", "host": ["{{base_url}}"], "path": ["voice", "{{note_id}}", "discard"] } } },
+        { "name": "POST /voice/:id/retranscribe", "request": { "method": "POST", "url": { "raw": "{{base_url}}/voice/{{note_id}}/retranscribe", "host": ["{{base_url}}"], "path": ["voice", "{{note_id}}", "retranscribe"] } } }
+      ]
+    }
+  ]
+}
