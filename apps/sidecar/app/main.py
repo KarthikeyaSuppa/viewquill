@@ -15,7 +15,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import books as books_api, health, settings as settings_api
+from app.api import (
+    books as books_api,
+    canvas as canvas_api,
+    codex as codex_api,
+    health,
+    llm as llm_api,
+    scenes as scenes_api,
+    settings as settings_api,
+    voice as voice_api,
+)
 from app.config import get_settings
 from app.db.migrate import run_migrations
 from app.services.ollama_health import check_ollama
@@ -56,6 +65,11 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(settings_api.router)
     app.include_router(books_api.router)
+    app.include_router(scenes_api.router)
+    app.include_router(canvas_api.router)
+    app.include_router(codex_api.router)
+    app.include_router(llm_api.router)
+    app.include_router(voice_api.router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:

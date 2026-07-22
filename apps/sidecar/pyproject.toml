@@ -12,11 +12,11 @@ dependencies = [
     "alembic==1.18.5",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
+    "litellm==1.91.4",
 ]
 
-# Deferred to their roadmap phases so this first install stays lean and model-free
+# Deferred to their roadmap phases so this install stays model-free
 # (docs/06). Added when their phase begins — NOT installed on the restrictive build laptop:
-#   Phase 2  LLM:       litellm
 #   Phase 2  voice STT: onnx-asr[cpu,hub], sounddevice, silero-vad
 #   Phase 6  export:    jinja2, python-docx, weasyprint, screenplay-tools
 #   Phase 7  security:  pyrage

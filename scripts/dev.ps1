@@ -18,6 +18,10 @@ $sidecarJob = Start-Job -ScriptBlock {
   param($py, $sidecar, $dataDir)
   Set-Location $sidecar
   $env:QUILLNIGHT_DATA_DIR = $dataDir
+  # This build laptop has no LLM/STT models (docs/CLAUDE.md). Run the AI paths in
+  # stub mode so Enhance/dictation are exercisable offline; unset on the AI laptop.
+  $env:QUILLNIGHT_LLM_STUB = '1'
+  $env:QUILLNIGHT_STT_STUB = '1'
   & $py -m app.main
 } -ArgumentList $py, $sidecar, $env:QUILLNIGHT_DATA_DIR
 

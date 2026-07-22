@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Library, Settings } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Firefly } from '@/components/firefly'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
 import { useSettings } from '@/queries/settings'
@@ -50,8 +49,6 @@ export function AppShell() {
             'radial-gradient(55% 45% at 10% 0%, oklch(0.54 0.21 277 / 0.12), transparent 70%)',
         }}
       />
-
-      <Firefly />
 
       <aside className="glass glass-edge relative z-10 m-4 flex w-56 shrink-0 flex-col rounded-2xl p-4">
         <div className="px-2 pt-1 pb-6">

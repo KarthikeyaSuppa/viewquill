@@ -235,6 +235,18 @@
   }
 }
 
+/* Ink-flow edge pulse (docs/10 §5 "delight base") — chrome/canvas decoration only, used
+   by <InkEdge/>. Only ever mounted when useDelight().motionOk is true; the global
+   reduced-motion backstop below is a second line of defense. */
+@keyframes ink-edge-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.ink-edge-flow {
+  animation: ink-edge-flow 0.9s linear infinite;
+}
+
 /* Respect reduced-motion globally as a backstop (docs/10). */
 @media (prefers-reduced-motion: reduce) {
   *,

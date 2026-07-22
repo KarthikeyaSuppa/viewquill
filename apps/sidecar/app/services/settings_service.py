@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.orm import AppSetting
+from app.services import groq_key
 
 _cfg = get_settings()
 
@@ -51,10 +52,15 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 
 
 def get_all_settings(db: Session) -> dict[str, Any]:
-    """Defaults overlaid with any stored overrides."""
+    """Defaults overlaid with any stored overrides, plus a computed, safe-to-expose
+    ``groq_key_present`` flag. The flag is NEVER stored — it's read fresh from the
+    in-memory `groq_key` seam (docs seam, see app/services/groq_key.py) on every call, and
+    deliberately excluded from ``DEFAULT_SETTINGS``/the DB so there is no code path that
+    could persist it (or the key itself)."""
     merged = dict(DEFAULT_SETTINGS)
     for row in db.execute(select(AppSetting)).scalars():
         merged[row.key] = row.value
+    merged["groq_key_present"] = groq_key.is_present()
     return merged
 
 

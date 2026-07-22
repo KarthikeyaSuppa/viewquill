@@ -1,0 +1,306 @@
+"""Enhance/continuity prompt assembler — the prefix-cache-disciplined context builder
+(docs/11-AI-INTELLIGENCE.md §5, docs/04-LLM-INTEGRATION.md "Enhance call flow").
+
+This module does ONLY string/message assembly. It never calls an LLM (no `litellm`, no
+`httpx` to Ollama) — that lives in the later `llm_orchestrator.py` (task D1) and the
+`/llm/enhance` endpoint (task C2), which are explicitly out of scope here.
+
+## The hard, cache-friendly message order (docs/09 principle #7, docs/11 §5)
+
+    [static system prompt] -> [deterministically-serialized codex block]
+        -> [variable scene text] -> [task instruction]
+
+Ollama/llama.cpp reuse the KV cache when a request's token *prefix* is byte-identical to
+the previous request in that slot. So:
+
+* Nothing volatile (timestamps, UUIDs, request IDs) may appear before the variable scene
+  text — one early differing token forfeits the whole cached prefix.
+* The codex block must be serialized **deterministically**: stable entity ordering, stable
+  field order, so an unchanged codex state produces a byte-identical block across calls.
+
+## Anti-spoiler rule (DATA-SENSITIVE — read before touching `build_codex_context`)
+
+`codex_arc_states` rows are point-in-time snapshots of a Codex entry (e.g. a character's
+current status/traits) *as of* a given position in a Book's outline
+(`as_of_outline_order_index`). When assembling context for a scene, only the **latest**
+arc-state whose `as_of_outline_order_index <= this scene's outline_order_index` may be
+included. A LATER arc-state (something that hasn't happened yet from this scene's point of
+view) must be EXCLUDED — including it would leak a future plot fact into an earlier scene's
+AI suggestion. If the scene isn't placed in the Book's outline yet (no `book_scene_order`
+row, or a null `outline_order_index`), we cannot safely resolve "as of where" — the fallback
+is to skip arc-state resolution entirely rather than guess, since omitting point-in-time
+detail can never leak a spoiler (it just falls back to the entry's evergreen summary).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.orm import (
+    BookSceneOrder,
+    CodexArcState,
+    CodexEntry,
+    CodexRelationship,
+    CodexSceneLink,
+)
+
+Mode = Literal["grammar", "prose", "continuity"]
+
+# ── Static system prompt — NEVER interpolated with volatile data ──────────────────────────
+SYSTEM_PROMPT = (
+    "You are a careful developmental editor and continuity assistant embedded in "
+    "Quillnight, a fiction-writing application. You preserve the author's voice, "
+    "structure, and intent. You NEVER invent new plot facts, characters, relationships, "
+    "or events beyond what is already established in the provided story-bible context or "
+    "the author's own text. When asked to revise text, output only the revised text — no "
+    "commentary, preamble, or explanation."
+)
+
+# ── Mode-specific task instructions (static per mode; sit AFTER the variable text) ────────
+_TASK_INSTRUCTIONS: dict[Mode, str] = {
+    "grammar": (
+        "Task: correct grammar, spelling, and punctuation errors in the text above only. "
+        "Preserve the author's voice, word choice, and sentence structure wherever "
+        "possible. Output only the corrected text."
+    ),
+    "prose": (
+        "Task: improve the prose quality, flow, and clarity of the text above. Preserve "
+        "the author's voice and every plot fact already established in the codex context "
+        "and the text itself. Output only the revised text."
+    ),
+    "continuity": (
+        "Task: check the text above for continuity issues against the codex context "
+        "provided earlier (contradicted traits, timeline inconsistencies, or facts "
+        "inconsistent with the story bible). Cite the exact contradicting text verbatim."
+    ),
+}
+
+_TEMPERATURE_BY_MODE: dict[Mode, float] = {
+    "grammar": 0.3,
+    "continuity": 0.3,
+    "prose": 0.7,
+}
+
+_ENTRY_SEPARATOR = "\n---\n"
+_EMPTY_CODEX_BLOCK = "## CODEX CONTEXT ##\n(no codex entries linked)"
+
+
+@dataclass(frozen=True)
+class ChatMessage:
+    role: str
+    content: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"role": self.role, "content": self.content}
+
+
+def temperature_for(mode: Mode) -> float:
+    """Sampling temperature per mode (docs/04 "Enhance call flow"): 0.3 favors precision
+    for grammar/continuity, 0.7 gives more latitude for prose phrasing."""
+    if mode not in _TEMPERATURE_BY_MODE:
+        raise ValueError(f"Unknown Enhance mode: {mode!r}")
+    return _TEMPERATURE_BY_MODE[mode]
+
+
+def _render_value(value: Any, indent: int) -> str:
+    """Deterministic rendering for nested dict/list custom-field values. Dict keys are
+    sorted (recursively); list order is preserved as given (assumed already deterministic)."""
+    pad = " " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key in sorted(value.keys()):
+            sub = value[key]
+            if isinstance(sub, (dict, list)):
+                lines.append(f"{pad}{key}:")
+                lines.append(_render_value(sub, indent + 2))
+            else:
+                lines.append(f"{pad}{key}: {sub}")
+        return "\n".join(lines)
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{pad}-")
+                lines.append(_render_value(item, indent + 2))
+            else:
+                lines.append(f"{pad}- {item}")
+        return "\n".join(lines)
+    return f"{pad}{value}"
+
+
+def _render_entry(entry: dict[str, Any]) -> str:
+    """Stable per-entry field order: name, type, summary, then custom_fields keys sorted
+    alphabetically. No id, no timestamps — nothing volatile-positioned."""
+    lines = [
+        f"name: {entry['name']}",
+        f"type: {entry['entry_type']}",
+        f"summary: {entry.get('summary') or ''}",
+    ]
+    custom_fields = entry.get("custom_fields") or {}
+    if custom_fields:
+        lines.append("custom_fields:")
+        for key in sorted(custom_fields.keys()):
+            value = custom_fields[key]
+            if isinstance(value, (dict, list)):
+                lines.append(f"  {key}:")
+                lines.append(_render_value(value, 4))
+            else:
+                lines.append(f"  {key}: {value}")
+    return "\n".join(lines)
+
+
+def serialize_codex_block(entries: list[dict[str, Any]]) -> str:
+    """Deterministic serialization of resolved codex entries into a single prefix-cacheable
+    block. Byte-identical across calls given the same logical input, because:
+
+    * entries are sorted by a stable key (``id`` then ``name``) rather than input order,
+    * each entry's fields are always emitted in the same order,
+    * custom_fields keys are sorted alphabetically,
+    * nothing volatile (timestamps, request-varying UUID positions) is emitted.
+
+    ``entries`` items are dicts with keys: ``id``, ``name``, ``entry_type``, ``summary``,
+    ``custom_fields`` — the shape returned by :func:`build_codex_context`.
+    """
+    if not entries:
+        return _EMPTY_CODEX_BLOCK
+    ordered = sorted(entries, key=lambda e: (e["id"], e["name"]))
+    blocks = [_render_entry(e) for e in ordered]
+    return "## CODEX CONTEXT ##\n" + _ENTRY_SEPARATOR.join(blocks)
+
+
+def token_budget_trim(codex_block: str, max_chars: int) -> str:
+    """Trim a serialized codex block to fit ``max_chars`` by dropping lowest-priority
+    entries from the END of the block — never reordering or rewriting survivors — so the
+    resulting string's PREFIX (the entries that remain) is byte-identical to what it would
+    have been without trimming. This is what keeps the KV-cache prefix stable even as the
+    budget forces some low-priority entries out on a given call.
+    """
+    if len(codex_block) <= max_chars:
+        return codex_block
+    if codex_block == _EMPTY_CODEX_BLOCK:
+        return codex_block[:max_chars]
+
+    header, _, rest = codex_block.partition("\n")
+    entry_blocks = rest.split(_ENTRY_SEPARATOR)
+    survivors = list(entry_blocks)
+    while survivors:
+        candidate = header + "\n" + _ENTRY_SEPARATOR.join(survivors)
+        if len(candidate) <= max_chars:
+            return candidate
+        survivors.pop()  # drop the lowest-priority (last) entry; keep the prefix stable
+    return header[:max_chars]
+
+
+def build_codex_context(db: Session, scene_id: str, book_id: str) -> list[dict[str, Any]]:
+    """Resolve the codex entries relevant to ``scene_id`` within ``book_id``:
+
+    1. SEED   — entries directly linked to the scene via ``codex_scene_links``.
+    2. EXPAND — one hop out through ``codex_relationships`` (either direction).
+    3. RESOLVE-TIME — apply the point-in-time ``codex_arc_states`` filter (anti-spoiler
+       rule, see module docstring): only the latest arc-state with
+       ``as_of_outline_order_index <= this scene's outline_order_index`` is folded into the
+       entry's ``custom_fields``. If the scene has no outline placement in this Book yet,
+       arc-state resolution is skipped entirely (safe fallback — omission can't spoil).
+
+    Returns a list of plain dicts (id, name, entry_type, summary, custom_fields) ready for
+    :func:`serialize_codex_block`. Order is NOT meaningful here — serialization re-sorts.
+    """
+    seed_ids: set[str] = set(
+        db.execute(
+            select(CodexSceneLink.codex_entry_id).where(CodexSceneLink.scene_id == scene_id)
+        ).scalars()
+    )
+
+    hop_ids: set[str] = set()
+    if seed_ids:
+        rel_rows = db.execute(
+            select(CodexRelationship.from_entry_id, CodexRelationship.to_entry_id).where(
+                CodexRelationship.from_entry_id.in_(seed_ids)
+                | CodexRelationship.to_entry_id.in_(seed_ids)
+            )
+        ).all()
+        for from_id, to_id in rel_rows:
+            if from_id in seed_ids:
+                hop_ids.add(to_id)
+            if to_id in seed_ids:
+                hop_ids.add(from_id)
+
+    all_ids = seed_ids | hop_ids
+    if not all_ids:
+        return []
+
+    entries = list(db.execute(select(CodexEntry).where(CodexEntry.id.in_(all_ids))).scalars())
+
+    scene_outline_index = db.execute(
+        select(BookSceneOrder.outline_order_index).where(
+            BookSceneOrder.book_id == book_id, BookSceneOrder.scene_id == scene_id
+        )
+    ).scalar_one_or_none()
+
+    resolved: list[dict[str, Any]] = []
+    for entry in entries:
+        custom_fields = dict(entry.custom_fields or {})
+
+        if scene_outline_index is not None:
+            arc_state = db.execute(
+                select(CodexArcState)
+                .where(
+                    CodexArcState.codex_entry_id == entry.id,
+                    CodexArcState.book_id == book_id,
+                    CodexArcState.as_of_outline_order_index <= scene_outline_index,
+                )
+                .order_by(CodexArcState.as_of_outline_order_index.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if arc_state is not None:
+                if arc_state.status_summary:
+                    custom_fields["arc_status_summary"] = arc_state.status_summary
+                if arc_state.traits_snapshot:
+                    custom_fields["arc_traits_snapshot"] = arc_state.traits_snapshot
+
+        resolved.append(
+            {
+                "id": entry.id,
+                "name": entry.name,
+                "entry_type": entry.entry_type,
+                "summary": entry.summary,
+                "custom_fields": custom_fields,
+            }
+        )
+    return resolved
+
+
+def build_enhance_prompt(
+    db: Session,
+    *,
+    mode: Mode,
+    text: str,
+    scene_id: str | None = None,
+    book_id: str | None = None,
+) -> list[dict[str, str]]:
+    """Assemble the ordered chat-message list for an Enhance/continuity call.
+
+    Hard order (see module docstring): [static system] -> [codex block] ->
+    [variable scene text] -> [task instruction]. Returns plain ``{"role","content"}`` dicts
+    (the shape LiteLLM/`litellm.completion(messages=...)` expects) so the later
+    orchestrator (task D1) can pass this straight through.
+    """
+    if mode not in _TASK_INSTRUCTIONS:
+        raise ValueError(f"Unknown Enhance mode: {mode!r}")
+
+    entries: list[dict[str, Any]] = []
+    if scene_id is not None and book_id is not None:
+        entries = build_codex_context(db, scene_id=scene_id, book_id=book_id)
+    codex_block = serialize_codex_block(entries)
+
+    messages = [
+        ChatMessage(role="system", content=SYSTEM_PROMPT),
+        ChatMessage(role="system", content=codex_block),
+        ChatMessage(role="user", content=text),
+        ChatMessage(role="user", content=_TASK_INSTRUCTIONS[mode]),
+    ]
+    return [m.as_dict() for m in messages]

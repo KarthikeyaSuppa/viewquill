@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -5,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useBook, type BookType } from '@/queries/books'
+import { CanvasPanel } from '@/components/canvas/canvas-panel'
+import { playPageTurn, useDelight } from '@/lib/delight'
 
 const BOOK_TYPE_LABELS: Record<BookType, string> = {
   story_book: 'Story Book',
@@ -13,11 +16,39 @@ const BOOK_TYPE_LABELS: Record<BookType, string> = {
   single_scene: 'Single Scene',
 }
 
-/** The Book shell (Phase 1): header + Canvas/Outline/Draft tabs. Panels are wired later. */
+type BookTab = 'canvas' | 'outline' | 'draft'
+
+/** True when the browser supports the View Transitions API — feature-detected so this is
+ * a no-op fallback (a plain state update) everywhere it isn't (docs/10 §5). */
+function supportsViewTransitions(): boolean {
+  return typeof document !== 'undefined' && typeof document.startViewTransition === 'function'
+}
+
+/** The Book shell (Phase 1): header + Canvas/Outline/Draft tabs. Panels are wired later.
+ * Tab switches (docs/10 §5 "delight base") cross-fade via the View Transitions API when
+ * supported, and only when `useDelight().motionOk` — i.e. never at delight_level 'calm'
+ * and never under `prefers-reduced-motion`, where switching is an instant, plain state
+ * update. */
 export function BookScreen() {
   const { bookId } = useParams<{ bookId: string }>()
   const navigate = useNavigate()
   const { data: book, isLoading } = useBook(bookId)
+  const { motionOk, soundsOk } = useDelight()
+  const [tab, setTab] = useState<BookTab>('canvas')
+
+  const handleTabChange = useCallback(
+    (next: string) => {
+      const nextTab = next as BookTab
+      if (soundsOk) playPageTurn()
+
+      if (motionOk && supportsViewTransitions()) {
+        document.startViewTransition(() => setTab(nextTab))
+      } else {
+        setTab(nextTab)
+      }
+    },
+    [motionOk, soundsOk],
+  )
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -41,14 +72,14 @@ export function BookScreen() {
         )}
       </div>
 
-      <Tabs defaultValue="canvas">
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="canvas">Canvas</TabsTrigger>
           <TabsTrigger value="outline">Outline</TabsTrigger>
           <TabsTrigger value="draft">Draft</TabsTrigger>
         </TabsList>
         <TabsContent value="canvas">
-          <EmptyPanel note="Coming in Phase 2." />
+          {bookId ? <CanvasPanel bookId={bookId} /> : <EmptyPanel note="Coming in Phase 2." />}
         </TabsContent>
         <TabsContent value="outline">
           <EmptyPanel note="Coming in Phase 4." />
