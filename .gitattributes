@@ -1,0 +1,21 @@
+# Normalize line endings so the CRLF↔LF churn stops.
+* text=auto eol=lf
+
+# Windows-only scripts stay CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Lockfiles + generated: keep as-is, don't diff-explode.
+package-lock.json -diff
+requirements.lock.txt -diff
+uv.lock -diff
+Cargo.lock -diff
+packages/api-types/schema.d.ts linguist-generated=true
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.ico binary
+*.riv binary
+*.quillproj binary

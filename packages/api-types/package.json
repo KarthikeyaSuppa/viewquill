@@ -1,0 +1,6 @@
+{
+  "name": "@quillnight/api-types",
+  "version": "0.0.0",
+  "types": "schema.d.ts",
+  "private": true
+}

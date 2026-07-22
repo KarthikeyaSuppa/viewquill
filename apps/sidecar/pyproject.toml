@@ -1,0 +1,38 @@
+[project]
+name = "quillnight-sidecar"
+version = "0.0.0"
+description = "Local domain/AI backend for the Quillnight story app (FastAPI, SQLAlchemy, Alembic)."
+requires-python = ">=3.11"
+# Top-level deps pinned to the versions resolved on 2026-07-22. The full transitive lock is
+# in requirements.lock.txt (committed). Official registry (PyPI) only — docs/02 §security.
+dependencies = [
+    "fastapi==0.139.2",
+    "uvicorn[standard]==0.51.0",
+    "SQLAlchemy==2.0.51",
+    "alembic==1.18.5",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+]
+
+# Deferred to their roadmap phases so this first install stays lean and model-free
+# (docs/06). Added when their phase begins — NOT installed on the restrictive build laptop:
+#   Phase 2  LLM:       litellm
+#   Phase 2  voice STT: onnx-asr[cpu,hub], sounddevice, silero-vad
+#   Phase 6  export:    jinja2, python-docx, weasyprint, screenplay-tools
+#   Phase 7  security:  pyrage
+#   Phase 10 semantic:  sqlite-vec
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = ["S101"]  # allow asserts in tests
+
+[tool.ruff.lint.per-file-ignores]
+"app/db/migrations/*" = ["E501"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
