@@ -30,6 +30,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new ApiError(`${init?.method ?? 'GET'} ${path} → ${res.status}`, res.status)
   }
+  if (res.status === 204) {
+    return undefined as T
+  }
   return (await res.json()) as T
 }
 
@@ -39,6 +42,7 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+  delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
 // ── Contracts (mirror app/models/schemas.py; superseded later by generated api-types) ──
