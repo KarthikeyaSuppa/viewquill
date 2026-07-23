@@ -8,6 +8,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Settings2,
   Trash2,
   Unlink2,
   Users,
@@ -45,6 +46,8 @@ import {
   useUnlinkCodexFromScene,
   useUpdateCodex,
 } from '@/queries/codex'
+import { CodexEntryDialog } from '@/components/codex/codex-entry-dialog'
+import { useBooks } from '@/queries/books'
 import type { CodexEntry, CodexEntryType } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -68,7 +71,9 @@ const TYPE_OPTIONS: { value: CodexEntryType; label: string; icon: typeof Users }
 export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   const [open, setOpen] = useState(false)
   const [entryType, setEntryType] = useState<CodexEntryType>('character')
+  const [editingEntry, setEditingEntry] = useState<CodexEntry | null>(null)
 
+  const { data: books } = useBooks()
   const { data: entries, isLoading } = useCodexEntries(entryType)
   const { data: sceneEntries } = useSceneCodex(sceneId)
   const linkedIds = useMemo(
@@ -167,6 +172,7 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
                 linked={sceneId ? linkedIds.has(entry.id) : undefined}
                 linkPending={linkToScene.isPending || unlinkFromScene.isPending}
                 onToggleLink={sceneId ? () => handleToggleLink(entry) : undefined}
+                onOpenEditor={() => setEditingEntry(entry)}
               />
             ))
           )}
@@ -200,6 +206,17 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
           Add
         </Button>
       </div>
+
+      {editingEntry && (
+        <CodexEntryDialog
+          entry={editingEntry}
+          open={!!editingEntry}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setEditingEntry(null)
+          }}
+          books={books}
+        />
+      )}
     </div>
   )
 }
@@ -211,12 +228,15 @@ function CodexEntryRow({
   linked,
   linkPending,
   onToggleLink,
+  onOpenEditor,
 }: {
   entry: CodexEntry
   /** undefined when no canvas node is selected — hides the link toggle entirely. */
   linked: boolean | undefined
   linkPending: boolean
   onToggleLink: (() => void) | undefined
+  /** Opens the full CodexEntryDialog (custom fields, relationships, image, arc states). */
+  onOpenEditor: () => void
 }) {
   const updateCodex = useUpdateCodex()
   const deleteCodex = useDeleteCodex()
@@ -304,6 +324,14 @@ function CodexEntryRow({
         <Button variant="ghost" size="icon-sm" aria-label="Edit entry" onClick={() => setEditing(true)}>
           <Pencil className="size-3.5" />
         </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="Open full editor" onClick={onOpenEditor}>
+              <Settings2 className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Custom fields, relationships, image, arc states</TooltipContent>
+        </Tooltip>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="Delete entry" disabled={deleteCodex.isPending}>

@@ -16,8 +16,17 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sqlalchemy import or_
+
 from app.db.base import new_uuid, utcnow_iso
-from app.models.orm import BookCodexLink, CodexEntry, CodexSceneLink
+from app.models.orm import (
+    Book,
+    BookCodexLink,
+    CodexArcState,
+    CodexEntry,
+    CodexRelationship,
+    CodexSceneLink,
+)
 
 
 def create_entry(
@@ -164,5 +173,142 @@ def unlink_book(db: Session, entry_id: str, book_id: str) -> bool:
     if link is None:
         return False
     db.delete(link)
+    db.commit()
+    return True
+
+
+# ── Entity relationships (Codex entry <-> Codex entry; docs/03-DATA-MODEL.md
+# `codex_relationships`; docs/06 Phase 3 task BE-1) ─────────────────────────────
+
+
+def create_relationship(
+    db: Session,
+    from_entry_id: str,
+    to_entry_id: str,
+    relationship_type: str,
+    description: str | None = None,
+) -> CodexRelationship:
+    """Create a directed relationship between two Codex entries.
+
+    Raises ``ValueError`` (caught by the route and mapped to an HTTP status) for:
+    ``"SELF_LINK"`` (an entry linked to itself), ``"ENTRY_NOT_FOUND"`` (either side
+    doesn't exist), or ``"DUPLICATE"`` (the same (from, to, type) triple already exists).
+    """
+    if from_entry_id == to_entry_id:
+        raise ValueError("SELF_LINK")
+    if get_entry(db, from_entry_id) is None or get_entry(db, to_entry_id) is None:
+        raise ValueError("ENTRY_NOT_FOUND")
+
+    existing = db.execute(
+        select(CodexRelationship).where(
+            CodexRelationship.from_entry_id == from_entry_id,
+            CodexRelationship.to_entry_id == to_entry_id,
+            CodexRelationship.relationship_type == relationship_type,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise ValueError("DUPLICATE")
+
+    relationship = CodexRelationship(
+        id=new_uuid(),
+        from_entry_id=from_entry_id,
+        to_entry_id=to_entry_id,
+        relationship_type=relationship_type,
+        description=description,
+    )
+    db.add(relationship)
+    db.commit()
+    db.refresh(relationship)
+    return relationship
+
+
+def list_relationships(db: Session, entry_id: str) -> list[CodexRelationship]:
+    """All relationships touching ``entry_id`` in either direction (from or to)."""
+    return list(
+        db.execute(
+            select(CodexRelationship)
+            .where(
+                or_(
+                    CodexRelationship.from_entry_id == entry_id,
+                    CodexRelationship.to_entry_id == entry_id,
+                )
+            )
+            .order_by(CodexRelationship.relationship_type, CodexRelationship.id)
+        ).scalars()
+    )
+
+
+def delete_relationship(db: Session, rel_id: str) -> bool:
+    relationship = db.get(CodexRelationship, rel_id)
+    if relationship is None:
+        return False
+    db.delete(relationship)
+    db.commit()
+    return True
+
+
+# ── Arc states (docs/03-DATA-MODEL.md `codex_arc_states`; docs/06 Phase 3 task BE-2) —
+# point-in-time entity snapshots. This is the WRITE side only; the anti-spoiler read/filter
+# contract lives entirely in app/services/prompt_builder.py's `build_codex_context` and must
+# not be duplicated or reinterpreted here. ──────────────────────────────────────────────────
+
+
+def create_arc_state(
+    db: Session,
+    codex_entry_id: str,
+    book_id: str,
+    as_of_outline_order_index: int,
+    status_summary: str | None = None,
+    traits_snapshot: dict[str, Any] | None = None,
+) -> CodexArcState:
+    """Create a new point-in-time arc-state for ``codex_entry_id`` within ``book_id``.
+
+    Raises ``ValueError("ENTRY_NOT_FOUND")`` if the Codex entry doesn't exist, or
+    ``ValueError("BOOK_NOT_FOUND")`` if the Book doesn't exist. No dedupe: multiple
+    arc-states per entry/book at different indices is the whole point, and two at the SAME
+    index are also allowed (both created; the read path picks the latest applicable one).
+    """
+    if get_entry(db, codex_entry_id) is None:
+        raise ValueError("ENTRY_NOT_FOUND")
+    if db.get(Book, book_id) is None:
+        raise ValueError("BOOK_NOT_FOUND")
+
+    arc_state = CodexArcState(
+        id=new_uuid(),
+        codex_entry_id=codex_entry_id,
+        book_id=book_id,
+        as_of_outline_order_index=as_of_outline_order_index,
+        status_summary=status_summary,
+        traits_snapshot=traits_snapshot,
+    )
+    db.add(arc_state)
+    db.commit()
+    db.refresh(arc_state)
+    return arc_state
+
+
+def list_arc_states(
+    db: Session, codex_entry_id: str, book_id: str | None = None
+) -> list[CodexArcState]:
+    """Arc-states for ``codex_entry_id``, optionally scoped to a single Book, in stable
+    ascending order by outline position (then creation order, then id) for display purposes.
+    (The anti-spoiler "latest applicable" resolution used by prompt_builder is separate and
+    unaffected by this ordering.)"""
+    stmt = select(CodexArcState).where(CodexArcState.codex_entry_id == codex_entry_id)
+    if book_id is not None:
+        stmt = stmt.where(CodexArcState.book_id == book_id)
+    stmt = stmt.order_by(
+        CodexArcState.as_of_outline_order_index.asc(),
+        CodexArcState.created_at.asc(),
+        CodexArcState.id.asc(),
+    )
+    return list(db.execute(stmt).scalars())
+
+
+def delete_arc_state(db: Session, arc_state_id: str) -> bool:
+    arc_state = db.get(CodexArcState, arc_state_id)
+    if arc_state is None:
+        return False
+    db.delete(arc_state)
     db.commit()
     return True

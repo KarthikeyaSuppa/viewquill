@@ -448,6 +448,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/codex/{entry_id}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Relationships */
+        get: operations["list_relationships_codex__entry_id__relationships_get"];
+        put?: never;
+        /** Create Relationship */
+        post: operations["create_relationship_codex__entry_id__relationships_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex/relationships/{rel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Relationship */
+        delete: operations["delete_relationship_codex_relationships__rel_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex/{entry_id}/arc-states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Arc States */
+        get: operations["list_arc_states_codex__entry_id__arc_states_get"];
+        put?: never;
+        /** Create Arc State */
+        post: operations["create_arc_state_codex__entry_id__arc_states_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex/arc-states/{arc_state_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Arc State */
+        delete: operations["delete_arc_state_codex_arc_states__arc_state_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Image */
+        post: operations["upload_image_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image */
+        get: operations["get_image_images__image_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm/enhance": {
         parameters: {
             query?: never;
@@ -779,6 +883,38 @@ export interface components {
             /** Edges */
             edges: components["schemas"]["CanvasEdge"][];
         };
+        /** CodexArcStateCreate */
+        CodexArcStateCreate: {
+            /** Book Id */
+            book_id: string;
+            /** As Of Outline Order Index */
+            as_of_outline_order_index: number;
+            /** Status Summary */
+            status_summary?: string | null;
+            /** Traits Snapshot */
+            traits_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** CodexArcStateRead */
+        CodexArcStateRead: {
+            /** Id */
+            id: string;
+            /** Codex Entry Id */
+            codex_entry_id: string;
+            /** Book Id */
+            book_id: string;
+            /** As Of Outline Order Index */
+            as_of_outline_order_index: number;
+            /** Status Summary */
+            status_summary: string | null;
+            /** Traits Snapshot */
+            traits_snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Created At */
+            created_at: string;
+        };
         /** CodexEntryCreate */
         CodexEntryCreate: {
             /**
@@ -832,6 +968,34 @@ export interface components {
             custom_fields?: {
                 [key: string]: unknown;
             } | null;
+            /** Primary Image Id */
+            primary_image_id?: string | null;
+        };
+        /**
+         * CodexRelationshipCreate
+         * @description ``from_entry_id`` comes from the path (``POST /codex/{entry_id}/relationships``),
+         *     not the body.
+         */
+        CodexRelationshipCreate: {
+            /** To Entry Id */
+            to_entry_id: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** CodexRelationshipRead */
+        CodexRelationshipRead: {
+            /** Id */
+            id: string;
+            /** From Entry Id */
+            from_entry_id: string;
+            /** To Entry Id */
+            to_entry_id: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Description */
+            description: string | null;
         };
         /** EdgeCreate */
         EdgeCreate: {
@@ -922,6 +1086,31 @@ export interface components {
              */
             database: "ok" | "error";
             ollama: components["schemas"]["OllamaHealth"];
+        };
+        /** ImageRead */
+        ImageRead: {
+            /** Id */
+            id: string;
+            /** Bucket */
+            bucket: string;
+            /** Storage Path */
+            storage_path: string;
+            /** Display Name */
+            display_name: string;
+            /** Original Filename */
+            original_filename: string | null;
+            /** Description */
+            description: string | null;
+            /** Width */
+            width: number | null;
+            /** Height */
+            height: number | null;
+            /** Checksum Sha256 */
+            checksum_sha256: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
         };
         /**
          * LinkCreate
@@ -2558,6 +2747,262 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_relationships_codex__entry_id__relationships_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexRelationshipRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relationship_codex__entry_id__relationships_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexRelationshipCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexRelationshipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_relationship_codex_relationships__rel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_arc_states_codex__entry_id__arc_states_get: {
+        parameters: {
+            query?: {
+                book_id?: string | null;
+            };
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexArcStateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_arc_state_codex__entry_id__arc_states_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexArcStateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexArcStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_arc_state_codex_arc_states__arc_state_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                arc_state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_images_post: {
+        parameters: {
+            query?: {
+                /** @description Original filename (metadata only). */
+                filename?: string | null;
+                display_name?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_images__image_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

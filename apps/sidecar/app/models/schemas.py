@@ -253,6 +253,7 @@ class CodexEntryUpdate(BaseModel):
     name: str | None = None
     summary: str | None = None
     custom_fields: dict[str, Any] | None = None
+    primary_image_id: str | None = None
 
 
 class CodexEntryRead(BaseModel):
@@ -266,6 +267,69 @@ class CodexEntryRead(BaseModel):
     primary_image_id: str | None
     created_at: str
     updated_at: str
+
+
+# ── Images (docs/03-DATA-MODEL.md `images`; docs/06 Phase 3 task BE-3) — minimal single-
+# image attach/serve. `bucket` is always "reference_pool" in this scope (Phase 5 adds
+# "finalized_scene"); width/height are left null (no image parsing yet). ────────────────
+class ImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    bucket: str
+    storage_path: str
+    display_name: str
+    original_filename: str | None
+    description: str | None
+    width: int | None
+    height: int | None
+    checksum_sha256: str | None
+    created_at: str
+    updated_at: str
+
+
+# ── Codex relationships (docs/03-DATA-MODEL.md `codex_relationships`; docs/06 Phase 3
+# task BE-1) — entity<->entity cross-linking, distinct from the Scene/Book links above. ─
+class CodexRelationshipCreate(BaseModel):
+    """``from_entry_id`` comes from the path (``POST /codex/{entry_id}/relationships``),
+    not the body."""
+
+    to_entry_id: str
+    relationship_type: str = Field(min_length=1, max_length=64)
+    description: str | None = None
+
+
+class CodexRelationshipRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    from_entry_id: str
+    to_entry_id: str
+    relationship_type: str
+    description: str | None
+
+
+# ── Codex arc-states (docs/03-DATA-MODEL.md `codex_arc_states`; docs/06 Phase 3 task BE-2) —
+# point-in-time entity snapshots consumed by prompt_builder.build_codex_context's anti-spoiler
+# filter. ``codex_entry_id`` comes from the path (``POST /codex/{entry_id}/arc-states``), not
+# the body. ────────────────────────────────────────────────────────────────────────────────
+class CodexArcStateCreate(BaseModel):
+    book_id: str
+    as_of_outline_order_index: int = Field(ge=0)
+    status_summary: str | None = None
+    traits_snapshot: dict[str, Any] | None = None
+
+
+class CodexArcStateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    codex_entry_id: str
+    book_id: str
+    as_of_outline_order_index: int
+    status_summary: str | None
+    traits_snapshot: dict[str, Any] | None
+    created_at: str
 
 
 # ── LLM Enhance/audit log (docs/04-LLM-INTEGRATION.md, docs/06 Phase 2 tasks D1/D2) ────

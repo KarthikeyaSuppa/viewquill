@@ -160,6 +160,42 @@ export interface CodexEntry {
   updated_at: string
 }
 
+// ── Codex relationships & arc states (mirrors app/models/schemas.py CodexRelationship*/
+// CodexArcState*; docs/06 Phase 3 Codex tasks). ──
+export interface CodexRelationship {
+  id: string
+  from_entry_id: string
+  to_entry_id: string
+  relationship_type: string
+  description: string | null
+}
+
+export interface CodexArcState {
+  id: string
+  codex_entry_id: string
+  book_id: string
+  as_of_outline_order_index: number
+  status_summary: string | null
+  traits_snapshot: Record<string, unknown> | null
+  created_at: string
+}
+
+// ── Images (mirrors app/models/schemas.py ImageRead; docs/06 Phase 3). Upload is a raw
+// request body (not multipart, not JSON) — see useUploadImage in src/queries/codex.ts. ──
+export interface ImageRead {
+  id: string
+  bucket: string
+  storage_path: string
+  display_name: string | null
+  original_filename: string | null
+  description: string | null
+  width: number | null
+  height: number | null
+  checksum_sha256: string
+  created_at: string
+  updated_at: string
+}
+
 // ── Voice notes (mirrors app/models/schemas.py VoiceNote*; docs/12, docs/06 Phase 2 H4).
 // [SECURITY-REVIEW] rides on the audio path — see app/api/voice.py + app/services/speech_stt.py. ──
 export type VoiceNoteStatus = 'recorded' | 'transcribed' | 'attached' | 'discarded'

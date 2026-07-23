@@ -30,6 +30,11 @@ AI suggestion. If the scene isn't placed in the Book's outline yet (no `book_sce
 row, or a null `outline_order_index`), we cannot safely resolve "as of where" — the fallback
 is to skip arc-state resolution entirely rather than guess, since omitting point-in-time
 detail can never leak a spoiler (it just falls back to the entry's evergreen summary).
+
+Note: Codex *relationship* `description` text (from `codex_relationships`) is ALWAYS
+visible to the model regardless of scene position — relationships are NOT arc-scoped like
+`codex_arc_states` rows are; only `status_summary`/`traits_snapshot` are filtered by
+`as_of_outline_order_index`. Do not assume relationship descriptions are spoiler-filtered.
 """
 
 from __future__ import annotations
@@ -134,7 +139,8 @@ def _render_value(value: Any, indent: int) -> str:
 
 def _render_entry(entry: dict[str, Any]) -> str:
     """Stable per-entry field order: name, type, summary, then custom_fields keys sorted
-    alphabetically. No id, no timestamps — nothing volatile-positioned."""
+    alphabetically, then relationships (if any) sorted deterministically. No id, no
+    timestamps — nothing volatile-positioned."""
     lines = [
         f"name: {entry['name']}",
         f"type: {entry['entry_type']}",
@@ -150,6 +156,19 @@ def _render_entry(entry: dict[str, Any]) -> str:
                 lines.append(_render_value(value, 4))
             else:
                 lines.append(f"  {key}: {value}")
+    relationships = entry.get("relationships") or []
+    if relationships:
+        lines.append("relationships:")
+        ordered_rels = sorted(
+            relationships,
+            key=lambda r: (r["type"], r["with"], r.get("description") or ""),
+        )
+        for rel in ordered_rels:
+            line = f"  - {rel['type']}: {rel['with']}"
+            description = rel.get("description") or ""
+            if description:
+                line += f" — {description}"
+            lines.append(line)
     return "\n".join(lines)
 
 
@@ -163,7 +182,7 @@ def serialize_codex_block(entries: list[dict[str, Any]]) -> str:
     * nothing volatile (timestamps, request-varying UUID positions) is emitted.
 
     ``entries`` items are dicts with keys: ``id``, ``name``, ``entry_type``, ``summary``,
-    ``custom_fields`` — the shape returned by :func:`build_codex_context`.
+    ``custom_fields``, ``relationships`` — the shape returned by :func:`build_codex_context`.
     """
     if not entries:
         return _EMPTY_CODEX_BLOCK
@@ -206,8 +225,11 @@ def build_codex_context(db: Session, scene_id: str, book_id: str) -> list[dict[s
        entry's ``custom_fields``. If the scene has no outline placement in this Book yet,
        arc-state resolution is skipped entirely (safe fallback — omission can't spoil).
 
-    Returns a list of plain dicts (id, name, entry_type, summary, custom_fields) ready for
-    :func:`serialize_codex_block`. Order is NOT meaningful here — serialization re-sorts.
+    Returns a list of plain dicts (id, name, entry_type, summary, custom_fields,
+    relationships) ready for :func:`serialize_codex_block`. Order is NOT meaningful here —
+    serialization re-sorts. ``relationships`` contains only edges whose OTHER endpoint is
+    also present in the resolved set (self-contained — no dangling references), rendered as
+    ``{"type", "with", "description"}`` with the other entry's name resolved.
     """
     seed_ids: set[str] = set(
         db.execute(
@@ -235,6 +257,36 @@ def build_codex_context(db: Session, scene_id: str, book_id: str) -> list[dict[s
 
     entries = list(db.execute(select(CodexEntry).where(CodexEntry.id.in_(all_ids))).scalars())
 
+    # Full relationship rows (type + description) between entries both present in the
+    # resolved set — used to render the "relationships" list on each entry below.
+    full_rel_rows = list(
+        db.execute(
+            select(CodexRelationship).where(
+                CodexRelationship.from_entry_id.in_(all_ids),
+                CodexRelationship.to_entry_id.in_(all_ids),
+            )
+        ).scalars()
+    )
+    name_by_id = {entry.id: entry.name for entry in entries}
+    relationships_by_id: dict[str, list[dict[str, Any]]] = {entry_id: [] for entry_id in all_ids}
+    for rel in full_rel_rows:
+        if rel.from_entry_id not in name_by_id or rel.to_entry_id not in name_by_id:
+            continue
+        relationships_by_id[rel.from_entry_id].append(
+            {
+                "type": rel.relationship_type,
+                "with": name_by_id[rel.to_entry_id],
+                "description": rel.description or "",
+            }
+        )
+        relationships_by_id[rel.to_entry_id].append(
+            {
+                "type": rel.relationship_type,
+                "with": name_by_id[rel.from_entry_id],
+                "description": rel.description or "",
+            }
+        )
+
     scene_outline_index = db.execute(
         select(BookSceneOrder.outline_order_index).where(
             BookSceneOrder.book_id == book_id, BookSceneOrder.scene_id == scene_id
@@ -253,7 +305,11 @@ def build_codex_context(db: Session, scene_id: str, book_id: str) -> list[dict[s
                     CodexArcState.book_id == book_id,
                     CodexArcState.as_of_outline_order_index <= scene_outline_index,
                 )
-                .order_by(CodexArcState.as_of_outline_order_index.desc())
+                .order_by(
+                    CodexArcState.as_of_outline_order_index.desc(),
+                    CodexArcState.created_at.desc(),
+                    CodexArcState.id.desc(),
+                )
                 .limit(1)
             ).scalar_one_or_none()
             if arc_state is not None:
@@ -269,6 +325,7 @@ def build_codex_context(db: Session, scene_id: str, book_id: str) -> list[dict[s
                 "entry_type": entry.entry_type,
                 "summary": entry.summary,
                 "custom_fields": custom_fields,
+                "relationships": relationships_by_id.get(entry.id, []),
             }
         )
     return resolved

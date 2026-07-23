@@ -34,6 +34,7 @@ from app.models.orm import (  # noqa: E402
     BookSceneOrder,
     CodexArcState,
     CodexEntry,
+    CodexRelationship,
     CodexSceneLink,
     Scene,
 )
@@ -227,6 +228,191 @@ def test_token_budget_trim_preserves_prefix_and_drops_from_the_end():
     assert full_block.startswith(trimmed.rstrip()) or trimmed in full_block
     # Untrimmed content fits as-is.
     assert prompt_builder.token_budget_trim(full_block, max_chars=len(full_block)) == full_block
+
+
+@pytest.fixture(scope="module")
+def seeded_with_relationships():
+    """Two Codex entries, both linked to the same scene, connected by one relationship
+    edge, to exercise the relationships-rendering path in build_codex_context."""
+    db = SessionLocal()
+    try:
+        book = Book(title="Relationship Test Book", book_type="story_book")
+        db.add(book)
+
+        scene = Scene(node_type="scene", title="Shared Scene", description="A and B meet.")
+        db.add(scene)
+        db.flush()
+
+        entry_a = CodexEntry(entry_type="character", name="Anya", summary="A blacksmith.")
+        entry_b = CodexEntry(entry_type="character", name="Boris", summary="A rival smith.")
+        db.add_all([entry_a, entry_b])
+        db.flush()
+
+        db.add_all(
+            [
+                CodexSceneLink(codex_entry_id=entry_a.id, scene_id=scene.id),
+                CodexSceneLink(codex_entry_id=entry_b.id, scene_id=scene.id),
+            ]
+        )
+        db.add(
+            CodexRelationship(
+                from_entry_id=entry_a.id,
+                to_entry_id=entry_b.id,
+                relationship_type="rival",
+                description="childhood friends turned enemies",
+            )
+        )
+        db.commit()
+
+        return {"book_id": book.id, "scene_id": scene.id, "a_id": entry_a.id, "b_id": entry_b.id}
+    finally:
+        db.close()
+
+
+def test_relationships_rendered_for_both_endpoints_and_are_byte_identical_on_rebuild(
+    seeded_with_relationships,
+):
+    db = SessionLocal()
+    try:
+        entries_1 = prompt_builder.build_codex_context(
+            db,
+            scene_id=seeded_with_relationships["scene_id"],
+            book_id=seeded_with_relationships["book_id"],
+        )
+        block_1 = prompt_builder.serialize_codex_block(entries_1)
+
+        entries_2 = prompt_builder.build_codex_context(
+            db,
+            scene_id=seeded_with_relationships["scene_id"],
+            book_id=seeded_with_relationships["book_id"],
+        )
+        block_2 = prompt_builder.serialize_codex_block(entries_2)
+
+        assert block_1 == block_2
+
+        # Both entries carry the edge, from their own perspective.
+        assert "relationships:" in block_1
+        assert "  - rival: Boris — childhood friends turned enemies" in block_1
+        assert "  - rival: Anya — childhood friends turned enemies" in block_1
+    finally:
+        db.close()
+
+
+def test_entry_with_no_relationships_matches_pre_relationships_format():
+    """Guards against accidental format drift: an entry dict with no relationships (either
+    key omitted, or explicit empty list) must render EXACTLY as it did before this feature
+    was added — no 'relationships:' line, no extra blank lines."""
+    entry = {
+        "id": "x-id",
+        "name": "Nobody",
+        "entry_type": "character",
+        "summary": "Has no connections.",
+        "custom_fields": {"eye_color": "brown"},
+    }
+    expected = "name: Nobody\ntype: character\nsummary: Has no connections.\ncustom_fields:\n  eye_color: brown"
+    assert prompt_builder._render_entry(entry) == expected
+
+    # Explicit empty relationships list must render identically to the key being absent.
+    entry_with_empty_rels = dict(entry, relationships=[])
+    assert prompt_builder._render_entry(entry_with_empty_rels) == expected
+
+
+def test_relationships_render_deterministically_regardless_of_insertion_order():
+    base_entry = {
+        "id": "c-id",
+        "name": "Cora",
+        "entry_type": "character",
+        "summary": "s",
+        "custom_fields": {},
+    }
+    rels_order_1 = [
+        {"type": "ally", "with": "Dax", "description": ""},
+        {"type": "rival", "with": "Boris", "description": "childhood friends turned enemies"},
+    ]
+    rels_order_2 = list(reversed(rels_order_1))
+
+    rendered_1 = prompt_builder._render_entry(dict(base_entry, relationships=rels_order_1))
+    rendered_2 = prompt_builder._render_entry(dict(base_entry, relationships=rels_order_2))
+    assert rendered_1 == rendered_2
+
+
+@pytest.fixture(scope="module")
+def seeded_with_tied_arc_states():
+    """One Book, one Codex entry linked to one Scene placed at outline index 3, with TWO
+    arc-states sharing the SAME `as_of_outline_order_index` (3) but different `created_at`
+    values — locks FIX B.2's total-order tiebreak (newest-created wins, id as final
+    tiebreak) so arc-state resolution is deterministic even when indexes tie."""
+    db = SessionLocal()
+    try:
+        book = Book(title="Tiebreak Test Book", book_type="story_book")
+        db.add(book)
+
+        scene = Scene(node_type="scene", title="Tiebreak Scene", description="Something happens.")
+        db.add(scene)
+        db.flush()
+
+        order = BookSceneOrder(book_id=book.id, scene_id=scene.id, outline_order_index=3)
+        db.add(order)
+
+        entry = CodexEntry(entry_type="character", name="Tessa", summary="A wandering scholar.")
+        db.add(entry)
+        db.flush()
+
+        db.add(CodexSceneLink(codex_entry_id=entry.id, scene_id=scene.id))
+
+        # Both arc-states share as_of_outline_order_index == 3 (<= scene's index of 3).
+        # created_at is set explicitly (String column) so ordering is unambiguous.
+        arc_older = CodexArcState(
+            codex_entry_id=entry.id,
+            book_id=book.id,
+            as_of_outline_order_index=3,
+            status_summary="OLDER — should be excluded by the tiebreak.",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        arc_newer = CodexArcState(
+            codex_entry_id=entry.id,
+            book_id=book.id,
+            as_of_outline_order_index=3,
+            status_summary="NEWER — must win the tiebreak.",
+            created_at="2026-01-02T00:00:00Z",
+        )
+        db.add_all([arc_older, arc_newer])
+        db.commit()
+
+        return {"book_id": book.id, "scene_id": scene.id, "entry_id": entry.id}
+    finally:
+        db.close()
+
+
+def test_tied_arc_state_index_resolves_deterministically_to_newest_created(
+    seeded_with_tied_arc_states,
+):
+    """FIX B.2: when two arc-states share the max qualifying `as_of_outline_order_index`,
+    resolution must be a TOTAL order (index desc, created_at desc, id desc) — not
+    nondeterministic LIMIT 1 — so the newest-created row always wins and repeated calls
+    produce byte-identical output (KV-cache-prefix safe)."""
+    db = SessionLocal()
+    try:
+        results = [
+            prompt_builder.build_codex_context(
+                db,
+                scene_id=seeded_with_tied_arc_states["scene_id"],
+                book_id=seeded_with_tied_arc_states["book_id"],
+            )
+            for _ in range(5)
+        ]
+
+        for entries in results:
+            assert len(entries) == 1
+            summary = entries[0]["custom_fields"].get("arc_status_summary")
+            assert summary == "NEWER — must win the tiebreak."
+            assert "OLDER" not in str(entries[0]["custom_fields"])
+
+        # Byte-identical serialized blocks across every call.
+        blocks = [prompt_builder.serialize_codex_block(entries) for entries in results]
+        assert all(block == blocks[0] for block in blocks)
+    finally:
+        db.close()
 
 
 def test_temperature_for():

@@ -21,6 +21,7 @@ from app.api import (
     canvas as canvas_api,
     codex as codex_api,
     health,
+    images as images_api,
     llm as llm_api,
     profiles as profiles_api,
     scenes as scenes_api,
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(scenes_api.router)
     app.include_router(canvas_api.router)
     app.include_router(codex_api.router)
+    app.include_router(images_api.router)
     app.include_router(llm_api.router)
     app.include_router(voice_api.router)
 
