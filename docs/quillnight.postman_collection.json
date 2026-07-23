@@ -6,6 +6,7 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8756" },
+    { "key": "token", "value": "" },
     { "key": "book_id", "value": "" },
     { "key": "scene_id", "value": "" },
     { "key": "element_id", "value": "" },
@@ -17,6 +18,16 @@
   ],
   "item": [
     {
+      "name": "Profiles & Auth",
+      "item": [
+        { "name": "GET /profiles", "request": { "method": "GET", "url": { "raw": "{{base_url}}/profiles", "host": ["{{base_url}}"], "path": ["profiles"] } } },
+        { "name": "POST /profiles (create)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"ada\",\n  \"password\": \"lovelace-1\",\n  \"display_name\": \"Ada\",\n  \"avatar\": \"fox\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/profiles", "host": ["{{base_url}}"], "path": ["profiles"] } } },
+        { "name": "POST /auth/login", "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set(\"token\", pm.response.json().token);"] } }], "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"ada\",\n  \"password\": \"lovelace-1\"\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] } } },
+        { "name": "GET /auth/me", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] } } },
+        { "name": "POST /auth/logout", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] } } }
+      ]
+    },
+    {
       "name": "Health",
       "item": [
         { "name": "GET /", "request": { "method": "GET", "url": { "raw": "{{base_url}}/", "host": ["{{base_url}}"], "path": [""] } } },
@@ -26,8 +37,8 @@
     {
       "name": "Settings",
       "item": [
-        { "name": "GET /settings", "request": { "method": "GET", "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } },
-        { "name": "PATCH /settings", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"values\": { \"theme_mode\": \"night\", \"delight_level\": \"playful\", \"ai_mode\": \"offline\" }\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } }
+        { "name": "GET /settings", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } },
+        { "name": "PATCH /settings", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\n  \"values\": { \"theme_mode\": \"night\", \"delight_level\": \"playful\", \"ai_mode\": \"offline\" }\n}", "options": { "raw": { "language": "json" } } }, "url": { "raw": "{{base_url}}/settings", "host": ["{{base_url}}"], "path": ["settings"] } } }
       ]
     },
     {

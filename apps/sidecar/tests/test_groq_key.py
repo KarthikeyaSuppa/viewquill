@@ -37,9 +37,26 @@ def client():
     groq_key.clear_key()
 
 
-def test_groq_key_lifecycle_never_exposes_the_key_itself(client: TestClient) -> None:
+@pytest.fixture(scope="module")
+def auth_headers(client: TestClient) -> dict[str, str]:
+    """/settings is bearer-protected (docs/13 §Endpoints) — create a throwaway profile and
+    log in once per module, same pattern as tests/test_profiles_auth.py."""
+    client.post(
+        "/profiles",
+        json={"username": "groqkey-tester", "password": "s3cret-pass", "avatar": "fox"},
+    )
+    login_resp = client.post(
+        "/auth/login", json={"username": "groqkey-tester", "password": "s3cret-pass"}
+    )
+    token = login_resp.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_groq_key_lifecycle_never_exposes_the_key_itself(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
     # 1. Nothing set yet.
-    settings_resp = client.get("/settings")
+    settings_resp = client.get("/settings", headers=auth_headers)
     assert settings_resp.status_code == 200
     assert settings_resp.json()["values"]["groq_key_present"] is False
 
@@ -49,7 +66,7 @@ def test_groq_key_lifecycle_never_exposes_the_key_itself(client: TestClient) -> 
     assert set_resp.json() == {"present": True}
 
     # 3. /settings now reflects presence...
-    settings_resp = client.get("/settings")
+    settings_resp = client.get("/settings", headers=auth_headers)
     assert settings_resp.status_code == 200
     settings_body = settings_resp.json()
     assert settings_body["values"]["groq_key_present"] is True
@@ -62,7 +79,9 @@ def test_groq_key_lifecycle_never_exposes_the_key_itself(client: TestClient) -> 
 
     # 5. Flip ai_mode to online so /llm/test-connection actually attempts a leg (default
     # is "offline", which must short-circuit to ok=False without a key check at all).
-    patch_resp = client.patch("/settings", json={"values": {"ai_mode": "online"}})
+    patch_resp = client.patch(
+        "/settings", json={"values": {"ai_mode": "online"}}, headers=auth_headers
+    )
     assert patch_resp.status_code == 200
 
     test_conn_resp = client.post("/llm/test-connection")
@@ -76,7 +95,7 @@ def test_groq_key_lifecycle_never_exposes_the_key_itself(client: TestClient) -> 
     delete_resp = client.delete("/llm/groq-key")
     assert delete_resp.status_code == 204
 
-    settings_resp = client.get("/settings")
+    settings_resp = client.get("/settings", headers=auth_headers)
     assert settings_resp.json()["values"]["groq_key_present"] is False
 
     # 7. With the key gone, test-connection declines without pretending to succeed.
@@ -85,10 +104,12 @@ def test_groq_key_lifecycle_never_exposes_the_key_itself(client: TestClient) -> 
     assert test_conn_resp.json() == {"ok": False, "reason": "No Groq API key is set", "provider": None}
 
 
-def test_test_connection_declines_when_ai_mode_is_offline(client: TestClient) -> None:
+def test_test_connection_declines_when_ai_mode_is_offline(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
     # Restore ai_mode to the offline default and set a key — offline must win regardless
     # of key presence (never a "missing key" error, per the module docstring policy).
-    client.patch("/settings", json={"values": {"ai_mode": "offline"}})
+    client.patch("/settings", json={"values": {"ai_mode": "offline"}}, headers=auth_headers)
     client.post("/llm/groq-key", json={"key": "gsk_another_secret"})
     try:
         resp = client.post("/llm/test-connection")
@@ -99,7 +120,7 @@ def test_test_connection_declines_when_ai_mode_is_offline(client: TestClient) ->
         assert "gsk_another_secret" not in resp.text
     finally:
         client.delete("/llm/groq-key")
-        client.patch("/settings", json={"values": {"ai_mode": "offline"}})
+        client.patch("/settings", json={"values": {"ai_mode": "offline"}}, headers=auth_headers)
 
 
 def test_groq_key_module_has_no_path_to_sqlite_settings_or_disk() -> None:

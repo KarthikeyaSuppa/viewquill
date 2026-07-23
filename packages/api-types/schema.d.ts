@@ -21,6 +21,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Profiles */
+        get: operations["list_profiles_profiles_get"];
+        put?: never;
+        /** Create Profile */
+        post: operations["create_profile_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -93,6 +162,470 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scenes */
+        get: operations["list_scenes_scenes_get"];
+        put?: never;
+        /** Create Scene */
+        post: operations["create_scene_scenes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenes/{scene_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scene */
+        get: operations["get_scene_scenes__scene_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Scene */
+        delete: operations["delete_scene_scenes__scene_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Scene */
+        patch: operations["update_scene_scenes__scene_id__patch"];
+        trace?: never;
+    };
+    "/scenes/{scene_id}/elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Elements */
+        get: operations["list_elements_scenes__scene_id__elements_get"];
+        put?: never;
+        /** Create Element */
+        post: operations["create_element_scenes__scene_id__elements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenes/{scene_id}/elements/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reorder Elements */
+        post: operations["reorder_elements_scenes__scene_id__elements_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenes/elements/{element_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Element */
+        delete: operations["delete_element_scenes_elements__element_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Element */
+        patch: operations["update_element_scenes_elements__element_id__patch"];
+        trace?: never;
+    };
+    "/books/{book_id}/canvas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Canvas */
+        get: operations["get_canvas_books__book_id__canvas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/scenes/{scene_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Scene To Canvas */
+        post: operations["add_scene_to_canvas_books__book_id__scenes__scene_id__post"];
+        /** Remove Scene From Canvas */
+        delete: operations["remove_scene_from_canvas_books__book_id__scenes__scene_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Canvas Link */
+        patch: operations["update_canvas_link_books__book_id__scenes__scene_id__patch"];
+        trace?: never;
+    };
+    "/books/{book_id}/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Edges */
+        get: operations["list_edges_books__book_id__edges_get"];
+        put?: never;
+        /** Create Edge */
+        post: operations["create_edge_books__book_id__edges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/edges/{edge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Edge */
+        delete: operations["delete_edge_edges__edge_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Edge */
+        patch: operations["update_edge_edges__edge_id__patch"];
+        trace?: never;
+    };
+    "/books/{dest_book_id}/scenes/{scene_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move Scene */
+        post: operations["move_scene_books__dest_book_id__scenes__scene_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{dest_book_id}/scenes/{scene_id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy Scene */
+        post: operations["copy_scene_books__dest_book_id__scenes__scene_id__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entries */
+        get: operations["list_entries_codex_get"];
+        put?: never;
+        /** Create Entry */
+        post: operations["create_entry_codex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Entry */
+        get: operations["get_entry_codex__entry_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Entry */
+        delete: operations["delete_entry_codex__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Entry */
+        patch: operations["update_entry_codex__entry_id__patch"];
+        trace?: never;
+    };
+    "/codex/{entry_id}/scenes/{scene_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Scene */
+        post: operations["link_scene_codex__entry_id__scenes__scene_id__post"];
+        /** Unlink Scene */
+        delete: operations["unlink_scene_codex__entry_id__scenes__scene_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenes/{scene_id}/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Codex For Scene */
+        get: operations["list_codex_for_scene_scenes__scene_id__codex_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/codex/{entry_id}/books/{book_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Book */
+        post: operations["link_book_codex__entry_id__books__book_id__post"];
+        /** Unlink Book */
+        delete: operations["unlink_book_codex__entry_id__books__book_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/enhance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enhance
+         * @description Stream an Enhance/continuity suggestion over SSE.
+         *
+         *     All DB reads (settings, codex context for the prompt) and the initial audit-log row
+         *     happen here, synchronously, using the request-scoped ``db`` session — before the
+         *     response is returned. The async generator below intentionally opens its OWN fresh
+         *     session (``SessionLocal()``) for `finish_log`, rather than reusing ``db`` after this
+         *     function returns: FastAPI/Starlette may tear the yield-dependency down as soon as the
+         *     route function returns a ``StreamingResponse``, before the body is actually streamed,
+         *     so relying on ``db`` staying open across the whole stream would be fragile.
+         */
+        post: operations["enhance_llm_enhance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/log/{log_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Log */
+        post: operations["accept_log_llm_log__log_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/groq-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Groq Key
+         * @description Dev seam (task F1) — stores the key in the in-memory `groq_key` module variable
+         *     only (see app/services/groq_key.py). Production replaces this whole endpoint with a
+         *     Rust-shell write straight into the OS keyring; the key is never written to SQLite,
+         *     `app_settings`, disk, or a log line here, and this response never echoes it back.
+         */
+        post: operations["set_groq_key_llm_groq_key_post"];
+        /** Delete Groq Key */
+        delete: operations["delete_groq_key_llm_groq_key_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description Fires exactly one minimal Groq call (mode "online") to confirm the currently-set
+         *     key + configured model actually work, without ever echoing the key back. Declines
+         *     (``ok=False``) without any network attempt when AI mode is offline or no key is set —
+         *     matching the "seamless fallback, never a missing-key error" policy the streaming
+         *     `/llm/enhance` endpoint follows (see module docstring "The Groq key seam").
+         */
+        post: operations["test_connection_llm_test_connection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transcribe Voice Note */
+        post: operations["transcribe_voice_note_voice_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Voice Notes */
+        get: operations["list_voice_notes_voice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice/{note_id}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach Voice Note */
+        post: operations["attach_voice_note_voice__note_id__attach_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice/{note_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard Voice Note */
+        post: operations["discard_voice_note_voice__note_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/voice/{note_id}/retranscribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retranscribe Voice Note */
+        post: operations["retranscribe_voice_note_voice__note_id__retranscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -114,6 +647,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AttachRequest
+         * @description Points a voice note at the entity/field it was dictated into (docs/12 "the
+         *     transcript lands in the focused field"). Attaching never deletes the audio.
+         */
+        AttachRequest: {
+            /** Attached Entity Type */
+            attached_entity_type: string;
+            /** Attached Entity Id */
+            attached_entity_id: string;
+        };
         /** BookConvert */
         BookConvert: {
             /**
@@ -182,6 +726,176 @@ export interface components {
             /** Cover Image Id */
             cover_image_id?: string | null;
         };
+        /** CanvasEdge */
+        CanvasEdge: {
+            /** Id */
+            id: string;
+            /** Source Scene Id */
+            source_scene_id: string;
+            /** Target Scene Id */
+            target_scene_id: string;
+            /** Source Handle */
+            source_handle: string | null;
+            /** Target Handle */
+            target_handle: string | null;
+            /** Connection Type */
+            connection_type: ("sequence" | "causal" | "reference" | "contradiction" | "custom") | null;
+            /** Label */
+            label: string | null;
+        };
+        /**
+         * CanvasNode
+         * @description A Scene as placed on one Book's canvas — canonical Scene fields plus this Book's
+         *     link (position/color). ``link_id`` identifies the ``BookSceneLink`` row itself, not the
+         *     scene, since a Scene can appear on multiple Books' canvases.
+         */
+        CanvasNode: {
+            /** Link Id */
+            link_id: string;
+            /** Scene Id */
+            scene_id: string;
+            /**
+             * Node Type
+             * @enum {string}
+             */
+            node_type: "scene" | "plot_point" | "thought";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string | null;
+            /** Canvas X */
+            canvas_x: number | null;
+            /** Canvas Y */
+            canvas_y: number | null;
+            /** Color */
+            color: string | null;
+        };
+        /** CanvasResponse */
+        CanvasResponse: {
+            /** Nodes */
+            nodes: components["schemas"]["CanvasNode"][];
+            /** Edges */
+            edges: components["schemas"]["CanvasEdge"][];
+        };
+        /** CodexEntryCreate */
+        CodexEntryCreate: {
+            /**
+             * Entry Type
+             * @enum {string}
+             */
+            entry_type: "character" | "location" | "faction" | "object_lore";
+            /** Name */
+            name: string;
+            /** Summary */
+            summary?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** CodexEntryRead */
+        CodexEntryRead: {
+            /** Id */
+            id: string;
+            /**
+             * Entry Type
+             * @enum {string}
+             */
+            entry_type: "character" | "location" | "faction" | "object_lore";
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: string | null;
+            /** Custom Fields */
+            custom_fields: {
+                [key: string]: unknown;
+            } | null;
+            /** Primary Image Id */
+            primary_image_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * CodexEntryUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        CodexEntryUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** EdgeCreate */
+        EdgeCreate: {
+            /** Source Scene Id */
+            source_scene_id: string;
+            /** Target Scene Id */
+            target_scene_id: string;
+            /** Source Handle */
+            source_handle?: string | null;
+            /** Target Handle */
+            target_handle?: string | null;
+            /** Connection Type */
+            connection_type?: ("sequence" | "causal" | "reference" | "contradiction" | "custom") | null;
+            /** Label */
+            label?: string | null;
+        };
+        /**
+         * EdgeUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        EdgeUpdate: {
+            /** Source Scene Id */
+            source_scene_id?: string | null;
+            /** Target Scene Id */
+            target_scene_id?: string | null;
+            /** Source Handle */
+            source_handle?: string | null;
+            /** Target Handle */
+            target_handle?: string | null;
+            /** Connection Type */
+            connection_type?: ("sequence" | "causal" | "reference" | "contradiction" | "custom") | null;
+            /** Label */
+            label?: string | null;
+        };
+        /** EnhanceRequest */
+        EnhanceRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "grammar" | "prose" | "continuity";
+            /** Text */
+            text: string;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Scene Id */
+            scene_id?: string | null;
+            /** Book Id */
+            book_id?: string | null;
+        };
+        /** GroqKeyPresence */
+        GroqKeyPresence: {
+            /** Present */
+            present: boolean;
+        };
+        /** GroqKeySet */
+        GroqKeySet: {
+            /** Key */
+            key: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -209,6 +923,71 @@ export interface components {
             database: "ok" | "error";
             ollama: components["schemas"]["OllamaHealth"];
         };
+        /**
+         * LinkCreate
+         * @description Add an existing Scene to a Book's canvas. Never creates a new Scene.
+         */
+        LinkCreate: {
+            /** Canvas X */
+            canvas_x?: number | null;
+            /** Canvas Y */
+            canvas_y?: number | null;
+            /** Color */
+            color?: string | null;
+        };
+        /**
+         * LinkUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        LinkUpdate: {
+            /** Canvas X */
+            canvas_x?: number | null;
+            /** Canvas Y */
+            canvas_y?: number | null;
+            /** Color */
+            color?: string | null;
+        };
+        /** LlmLogRead */
+        LlmLogRead: {
+            /** Id */
+            id: string;
+            /** Request Type */
+            request_type: string | null;
+            /** Entity Type */
+            entity_type: string | null;
+            /** Entity Id */
+            entity_id: string | null;
+            /** Book Id */
+            book_id: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Model Name */
+            model_name: string | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Accepted */
+            accepted: number | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** LogAccept */
+        LogAccept: {
+            /** Accepted */
+            accepted: boolean;
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+        };
+        /** LoginResponse */
+        LoginResponse: {
+            /** Token */
+            token: string;
+            user: components["schemas"]["ProfilePublic"];
+        };
         /** OllamaHealth */
         OllamaHealth: {
             /** Reachable */
@@ -217,6 +996,129 @@ export interface components {
             base_url: string;
             /** Detail */
             detail?: string | null;
+        };
+        /**
+         * ProfileCreate
+         * @description Validation of non-empty username/password is deliberately left to
+         *     ``profiles_service.create_profile`` (not a Pydantic ``Field(min_length=1)``) so the
+         *     422 error message stays the app's own contract rather than FastAPI's default shape.
+         *     ``max_length`` bounds are still set here so an arbitrarily huge password is never fed
+         *     to argon2.
+         */
+        ProfileCreate: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+            /** Display Name */
+            display_name?: string | null;
+            /** Avatar */
+            avatar?: string | null;
+        };
+        /** ProfilePublic */
+        ProfilePublic: {
+            /** Id */
+            id: string;
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Avatar */
+            avatar: string | null;
+        };
+        /** SceneCreate */
+        SceneCreate: {
+            /**
+             * Node Type
+             * @enum {string}
+             */
+            node_type: "scene" | "plot_point" | "thought";
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** SceneRead */
+        SceneRead: {
+            /** Id */
+            id: string;
+            /**
+             * Node Type
+             * @enum {string}
+             */
+            node_type: "scene" | "plot_point" | "thought";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string | null;
+            /** Word Count */
+            word_count: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * SceneUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        SceneUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Status */
+            status?: string | null;
+        };
+        /** ScreenplayElementCreate */
+        ScreenplayElementCreate: {
+            /**
+             * Element Type
+             * @enum {string}
+             */
+            element_type: "scene_heading" | "action" | "character" | "dialogue" | "parenthetical" | "transition" | "shot" | "dual_dialogue";
+            /** Text */
+            text: string;
+            /** Order Index */
+            order_index?: number | null;
+        };
+        /** ScreenplayElementRead */
+        ScreenplayElementRead: {
+            /** Id */
+            id: string;
+            /** Scene Id */
+            scene_id: string;
+            /** Order Index */
+            order_index: number;
+            /**
+             * Element Type
+             * @enum {string}
+             */
+            element_type: "scene_heading" | "action" | "character" | "dialogue" | "parenthetical" | "transition" | "shot" | "dual_dialogue";
+            /** Text */
+            text: string;
+        };
+        /**
+         * ScreenplayElementReorder
+         * @description Ordered list of element IDs — the new order_index is each id's position.
+         */
+        ScreenplayElementReorder: {
+            /** Element Ids */
+            element_ids: string[];
+        };
+        /**
+         * ScreenplayElementUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        ScreenplayElementUpdate: {
+            /** Element Type */
+            element_type?: ("scene_heading" | "action" | "character" | "dialogue" | "parenthetical" | "transition" | "shot" | "dual_dialogue") | null;
+            /** Text */
+            text?: string | null;
+            /** Order Index */
+            order_index?: number | null;
         };
         /**
          * SettingsResponse
@@ -238,6 +1140,15 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** TestConnectionResult */
+        TestConnectionResult: {
+            /** Ok */
+            ok: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Provider */
+            provider?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -250,6 +1161,30 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VoiceNoteRead */
+        VoiceNoteRead: {
+            /** Id */
+            id: string;
+            /** Audio Path */
+            audio_path: string;
+            /** Transcript */
+            transcript: string | null;
+            /** Engine */
+            engine: string | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Attached Entity Type */
+            attached_entity_type: string | null;
+            /** Attached Entity Id */
+            attached_entity_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "recorded" | "transcribed" | "attached" | "discarded";
+            /** Created At */
+            created_at: string;
         };
     };
     responses: never;
@@ -280,7 +1215,7 @@ export interface operations {
             };
         };
     };
-    get_settings_settings_get: {
+    list_profiles_profiles_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -295,7 +1230,168 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ProfilePublic"][];
+                };
+            };
+        };
+    };
+    create_profile_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    me_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -303,7 +1399,9 @@ export interface operations {
     patch_settings_settings_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -503,6 +1601,1238 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_scenes_scenes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRead"][];
+                };
+            };
+        };
+    };
+    create_scene_scenes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_scene_scenes__scene_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_scene_scenes__scene_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_scene_scenes__scene_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_elements_scenes__scene_id__elements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenplayElementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_element_scenes__scene_id__elements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenplayElementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenplayElementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_elements_scenes__scene_id__elements_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenplayElementReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenplayElementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_element_scenes_elements__element_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_element_scenes_elements__element_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenplayElementUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenplayElementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canvas_books__book_id__canvas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_scene_to_canvas_books__book_id__scenes__scene_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasNode"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_scene_from_canvas_books__book_id__scenes__scene_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_canvas_link_books__book_id__scenes__scene_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasNode"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_edges_books__book_id__edges_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEdge"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_edge_books__book_id__edges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEdge"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_edge_edges__edge_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_edge_edges__edge_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                edge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEdge"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_scene_books__dest_book_id__scenes__scene_id__move_post: {
+        parameters: {
+            query?: {
+                from_book_id?: string | null;
+            };
+            header?: never;
+            path: {
+                dest_book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasNode"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copy_scene_books__dest_book_id__scenes__scene_id__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dest_book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entries_codex_get: {
+        parameters: {
+            query?: {
+                entry_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entry_codex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexEntryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entry_codex__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entry_codex__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entry_codex__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexEntryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_scene_codex__entry_id__scenes__scene_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_scene_codex__entry_id__scenes__scene_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_codex_for_scene_scenes__scene_id__codex_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_book_codex__entry_id__books__book_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_book_codex__entry_id__books__book_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enhance_llm_enhance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnhanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_log_llm_log__log_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogAccept"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmLogRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_groq_key_llm_groq_key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroqKeySet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroqKeyPresence"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_groq_key_llm_groq_key_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_connection_llm_test_connection_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestConnectionResult"];
+                };
+            };
+        };
+    };
+    transcribe_voice_note_voice_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceNoteRead"];
+                };
+            };
+        };
+    };
+    list_voice_notes_voice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceNoteRead"][];
+                };
+            };
+        };
+    };
+    attach_voice_note_voice__note_id__attach_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceNoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_voice_note_voice__note_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceNoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retranscribe_voice_note_voice__note_id__retranscribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceNoteRead"];
                 };
             };
             /** @description Validation Error */

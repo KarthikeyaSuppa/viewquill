@@ -13,6 +13,7 @@ dependencies = [
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
     "litellm==1.91.4",
+    "argon2-cffi==25.1.0",
 ]
 
 # Deferred to their roadmap phases so this install stays model-free

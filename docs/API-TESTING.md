@@ -50,7 +50,7 @@ Two ways — the import gives you the complete, always-current set; the committe
 **A. Import the committed collection (recommended for quick start)**
 1. Postman → **Import** → **File** → select `docs/quillnight.postman_collection.json`.
 2. Open the collection's **Variables** tab: `base_url` is pre-filled (`http://127.0.0.1:8756`); paste `book_id` / `scene_id` / `codex_id` / etc. from earlier responses (or grab them in Swagger).
-3. Folders mirror this doc (Health, Settings, Books, Scenes, Canvas, Codex, LLM, Voice). Run the sidecar in **stub mode** first.
+3. Folders mirror this doc (Profiles & Auth, Health, Settings, Books, Scenes, Canvas, Codex, LLM, Voice). Run the sidecar in **stub mode** first.
 
 **B. Import straight from OpenAPI (always in sync with the running server)**
 1. Start the sidecar. Postman → **Import** → **Link** → `http://127.0.0.1:8756/openapi.json` → Import.
@@ -66,14 +66,57 @@ Missing resources return `404`. Bodies are JSON unless stated (voice upload is r
 
 ---
 
+## Profiles & Auth
+
+Up to **2 profiles total**, launch-time picker. `POST /profiles` and `POST /auth/login` are the only ways in — `GET /profiles` (for the picker) and `POST /profiles` (create) are public; everything else needs a **bearer token** from `/auth/login`.
+
+```bash
+curl http://127.0.0.1:8756/profiles                       # list for the picker: [] or [{id,username,display_name,avatar}, ...] — never password_hash
+curl -X POST http://127.0.0.1:8756/profiles -H "Content-Type: application/json" \
+  -d '{"username":"ada","password":"lovelace-1","display_name":"Ada","avatar":"fox"}'
+# display_name/avatar optional. avatar presets: fox | owl | cat | moon | star | quill | book | ink
+# 201 -> {id, username, display_name, avatar}
+# errors: 409 duplicate username (case-INsensitive, "ADA" collides with "ada") / 409 3rd profile ("Maximum of 2 profiles reached.") / 422 empty username or password
+
+curl -X POST http://127.0.0.1:8756/auth/login -H "Content-Type: application/json" \
+  -d '{"username":"ada","password":"lovelace-1"}'
+# 200 -> {"token":"<opaque>","user":{id,username,display_name,avatar}}
+# 401 {"detail":"Incorrect username or password."} on bad creds
+# token is an in-memory session token only — cleared on sidecar restart (relaunch shows the picker again)
+
+curl http://127.0.0.1:8756/auth/me -H "Authorization: Bearer <TOKEN>"
+# -> {id,username,display_name,avatar}. 401 "Not authenticated." (missing/malformed header) or "Invalid or expired session." (unknown/expired token)
+
+curl -X POST http://127.0.0.1:8756/auth/logout -H "Authorization: Bearer <TOKEN>"
+# -> {"ok":true}; that token then 401s on /auth/me
+```
+
+### End-to-end flow (PowerShell)
+
+```powershell
+$B = "http://127.0.0.1:8756"
+Invoke-RestMethod "$B/profiles" -Method Post -ContentType application/json `
+  -Body '{"username":"ada","password":"lovelace-1","display_name":"Ada","avatar":"fox"}'
+$login = Invoke-RestMethod "$B/auth/login" -Method Post -ContentType application/json `
+  -Body '{"username":"ada","password":"lovelace-1"}'
+$token = $login.token
+$headers = @{ Authorization = "Bearer $token" }
+Invoke-RestMethod "$B/auth/me" -Headers $headers
+Invoke-RestMethod "$B/settings" -Method Patch -ContentType application/json -Headers $headers `
+  -Body '{"values":{"theme_mode":"night"}}'
+Invoke-RestMethod "$B/auth/logout" -Method Post -Headers $headers
+```
+
 ## Health & settings
+
+Settings are now **bearer-protected**: both `GET` and `PATCH /settings` require `Authorization: Bearer <token>` (see Profiles & Auth above) — no token means 401. Some keys are **per-user** (`theme_mode`, `bg_tint`, `font_family`, `font_size`, `line_height`, `letter_spacing`, `line_length_ch`, `reading_ruler`, `delight_level`, `sounds_enabled`, `mascot_enabled`, `onboarding_complete`); the rest are **global/shared** across profiles (`ai_mode`, `*_model_name`, `groq_*`, `stt_engine`, `dictation_hotkey`, `tts_*`, `daily_word_goal`). Responses are wrapped: `{"values": { ...all settings..., "groq_key_present": false }}`.
 
 ```bash
 curl http://127.0.0.1:8756/health
-curl http://127.0.0.1:8756/settings
+curl http://127.0.0.1:8756/settings -H "Authorization: Bearer <TOKEN>"
 # patch any subset of settings (theme, fonts, ai_mode, delight, etc.)
 curl -X PATCH http://127.0.0.1:8756/settings \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <TOKEN>" \
   -d '{"values":{"theme_mode":"night","delight_level":"playful","ai_mode":"offline"}}'
 ```
 
@@ -203,4 +246,4 @@ Invoke-RestMethod "$B/books/$($book.id)/scenes/$($scene.id)" -Method Post -Conte
 Invoke-RestMethod "$B/books/$($book.id)/canvas"
 ```
 
-> Endpoints added in later phases (auth/profiles, images, outline/timeline, continuity, export, backup) will be appended here as they ship.
+> Endpoints added in later phases (images, outline/timeline, continuity, export, backup) will be appended here as they ship.

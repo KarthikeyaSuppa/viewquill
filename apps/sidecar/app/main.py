@@ -16,11 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api import (
+    auth as auth_api,
     books as books_api,
     canvas as canvas_api,
     codex as codex_api,
     health,
     llm as llm_api,
+    profiles as profiles_api,
     scenes as scenes_api,
     settings as settings_api,
     voice as voice_api,
@@ -63,6 +65,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    app.include_router(profiles_api.router)
+    app.include_router(auth_api.router)
     app.include_router(settings_api.router)
     app.include_router(books_api.router)
     app.include_router(scenes_api.router)

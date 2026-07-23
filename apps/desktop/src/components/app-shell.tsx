@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Library, Settings } from 'lucide-react'
+import { Library, LogOut, Settings } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
+import { Button } from '@/components/ui/button'
+import { resolveAvatar } from '@/components/auth/avatars'
 import { useSettings } from '@/queries/settings'
+import { useLogout } from '@/queries/profiles'
 import { useOnboardingWizardStore } from '@/stores/onboarding'
+import { useAuthStore } from '@/stores/auth'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
@@ -25,6 +29,10 @@ export function AppShell() {
   const { data: settingsValues, isSuccess: settingsLoaded } = useSettings()
   const openWizard = useOnboardingWizardStore((s) => s.open)
   const hasAutoOpened = useRef(false)
+
+  const currentUser = useAuthStore((s) => s.user)
+  const logout = useLogout()
+  const avatar = resolveAvatar(currentUser?.avatar)
 
   // First-run gate (docs/10 §7): once settings have loaded, auto-open the wizard exactly
   // once if onboarding hasn't been completed yet.
@@ -76,7 +84,24 @@ export function AppShell() {
           ))}
         </nav>
 
-        <ThemeToggle className="self-start" />
+        <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-w-0 flex-1 justify-start gap-2 px-2"
+            onClick={() => logout.mutate()}
+            title="Switch profile"
+          >
+            <span className="text-base" role="img" aria-label={avatar.label}>
+              {avatar.emoji}
+            </span>
+            <span className="truncate text-xs font-medium">
+              {currentUser?.display_name || currentUser?.username || 'Switch profile'}
+            </span>
+            <LogOut className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+          </Button>
+          <ThemeToggle />
+        </div>
       </aside>
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto p-6">

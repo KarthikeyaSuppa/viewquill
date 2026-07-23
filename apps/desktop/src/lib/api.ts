@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/stores/auth'
+
 /**
  * Typed client for the Python sidecar (docs/02). In dev the sidecar is a fixed localhost
  * port; under Tauri the Rust shell will hand us the dynamic port via `get_backend_port()`
@@ -23,8 +25,15 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Read the store outside React (no hook context here) so every call — including ones
+  // made before any component renders — picks up the current session token, if any.
+  const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
     ...init,
   })
   if (!res.ok) {
@@ -43,6 +52,20 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
+}
+
+// ── Local profiles & auth (mirrors app/models/schemas.py Profile*/Login*; UI/profile
+// LOCK only — the password gates who's at the keyboard, it never encrypts data). ──
+export interface Profile {
+  id: string
+  username: string
+  display_name: string | null
+  avatar: string
+}
+
+export interface LoginResponse {
+  token: string
+  user: Profile
 }
 
 // ── Contracts (mirror app/models/schemas.py; superseded later by generated api-types) ──

@@ -349,3 +349,38 @@ class AttachRequest(BaseModel):
 
     attached_entity_type: str = Field(min_length=1)
     attached_entity_id: str = Field(min_length=1)
+
+
+# ── Profiles & local auth (docs/13-PROFILES-AND-AUTH.md) ──────────────────────
+# A UI/profile LOCK, not encryption — the SQLite database stays plaintext on disk.
+# ``ProfilePublic`` NEVER includes ``password_hash``.
+class ProfilePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    username: str
+    display_name: str | None
+    avatar: str | None
+
+
+class ProfileCreate(BaseModel):
+    """Validation of non-empty username/password is deliberately left to
+    ``profiles_service.create_profile`` (not a Pydantic ``Field(min_length=1)``) so the
+    422 error message stays the app's own contract rather than FastAPI's default shape.
+    ``max_length`` bounds are still set here so an arbitrarily huge password is never fed
+    to argon2."""
+
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+    display_name: str | None = None
+    avatar: str | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+
+
+class LoginResponse(BaseModel):
+    token: str
+    user: ProfilePublic

@@ -22,10 +22,12 @@ from sqlalchemy import (
     CheckConstraint,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -345,13 +347,48 @@ class LlmRequestLog(Base):
     created_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
 
 
+# ── Profiles & local auth (UI/profile LOCK — NOT encryption; the SQLite DB stays
+# plaintext on disk. See app/services/password_service.py) ───────────────────
+class User(Base):
+    """A local profile. ``password_hash`` is an argon2 hash, never the plaintext.
+
+    ``username`` uniqueness is enforced case-insensitively at the DB layer via a
+    ``COLLATE NOCASE`` unique index (``uq_users_username``) — this backstops
+    ``profiles_service``'s own case-insensitive check (strip+lower) so "Alice" and
+    "alice" can never both exist, even under a threadpool race.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("uq_users_username", text("username COLLATE NOCASE"), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    avatar: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
 class AppSetting(Base):
-    """Key/value user preferences. NEVER holds secrets — the Groq API key lives only in the
-    OS credential vault, accessed from the Rust shell (docs/03, docs/08)."""
+    """Key/value preferences. NEVER holds secrets — the Groq API key lives only in the
+    OS credential vault, accessed from the Rust shell (docs/03, docs/08).
+
+    ``user_id`` NULL rows are global settings; non-NULL rows are per-user overrides
+    (per-user scoping is threaded through the endpoints in a later task — for now
+    ``settings_service`` only reads/writes the global (``user_id IS NULL``) rows, so
+    current behavior is unchanged). Two partial-unique indexes (created in the
+    migration) enforce at most one row per key per scope."""
 
     __tablename__ = "app_settings"
 
-    key: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    key: Mapped[str] = mapped_column(String, nullable=False)
     value: Mapped[object | None] = mapped_column(JSON, nullable=True)
 
 
@@ -383,6 +420,9 @@ class WritingSession(Base):
     ended_at: Mapped[str | None] = mapped_column(String, nullable=True)
     words_added: Mapped[int] = mapped_column(Integer, default=0)
     book_id: Mapped[str | None] = mapped_column(ForeignKey("books.id"), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class Achievement(Base):
