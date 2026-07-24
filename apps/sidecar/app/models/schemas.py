@@ -288,6 +288,84 @@ class ImageRead(BaseModel):
     updated_at: str
 
 
+# ── Structure templates (docs/03-DATA-MODEL.md `structure_templates`; docs/06 Phase 4
+# task BE-2) — built-in seed data (Three-Act, Hero's Journey, Freeform), read-only over
+# the wire. ``applicable_book_types`` of ``None`` means "applies to every book type". ──
+class StructureTemplateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    applicable_book_types: list[str] | None
+    beats: list[dict[str, Any]] | None
+
+
+# ── Chapters (docs/03-DATA-MODEL.md `chapters`; docs/06 Phase 4 task BE-2) — per-Book
+# grouping of the Outline view. Unlike Scenes/Codex, Chapters are NOT canonical/shared —
+# they belong to exactly one Book and cascade-delete with it. ────────────────────────────
+class ChapterCreate(BaseModel):
+    title: str = Field(min_length=1)
+    order_index: int | None = Field(default=None, ge=0)
+
+
+class ChapterUpdate(BaseModel):
+    """Partial update — only the fields provided are changed."""
+
+    title: str | None = None
+    order_index: int | None = Field(default=None, ge=0)
+
+
+class ChapterRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    book_id: str
+    title: str
+    order_index: int
+
+
+# ── Outline/Timeline mediator (docs/03-DATA-MODEL.md `book_scene_order`; docs/06 Phase 4
+# task BE-3) — ONE row per (book_id, scene_id) backs BOTH the Outline (beat-board) and
+# Timeline views; see app/services/outline_service.py module docstring. ─────────────────
+class BookSceneOrderRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    book_id: str
+    scene_id: str
+    chapter_id: str | None
+    outline_order_index: int | None
+    structure_beat: str | None
+    timeline_order_index: int | None
+    in_story_time_label: str | None
+    in_story_time_sort_key: float | None
+
+
+class AssignSceneRequest(BaseModel):
+    """Partial update — only the fields provided are changed; other fields on the same
+    (book, scene) row — including any Timeline fields — are left untouched."""
+
+    chapter_id: str | None = None
+    structure_beat: str | None = None
+    outline_order_index: int | None = Field(default=None, ge=0)
+
+
+class ReorderRequest(BaseModel):
+    """Authoritative reindex — each id's position in this list becomes its new
+    order_index (0..n)."""
+
+    scene_ids: list[str] = Field(min_length=1)
+
+
+class TimelineSetRequest(BaseModel):
+    """Partial update — only the fields provided are changed; any already-set Outline
+    fields on the same (book, scene) row are left untouched."""
+
+    timeline_order_index: int | None = Field(default=None, ge=0)
+    in_story_time_label: str | None = None
+    in_story_time_sort_key: float | None = None
+
+
 # ── Codex relationships (docs/03-DATA-MODEL.md `codex_relationships`; docs/06 Phase 3
 # task BE-1) — entity<->entity cross-linking, distinct from the Scene/Book links above. ─
 class CodexRelationshipCreate(BaseModel):
@@ -337,6 +415,25 @@ class CodexArcStateRead(BaseModel):
 # `screenplay_elements` itself — Accept is a separate, explicit client-driven PATCH to the
 # entity in question. This schema block only covers the request + the audit-log resource.
 EnhanceMode = Literal["grammar", "prose", "continuity"]
+
+
+class ContinuityFlagRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    book_id: str
+    scene_id: str | None
+    codex_entry_id: str | None
+    flag_type: str | None
+    severity: str
+    description: str
+    status: str
+    source: str | None
+    created_at: str
+
+
+class FlagStatusUpdate(BaseModel):
+    status: Literal["open", "dismissed", "resolved"]
 
 
 class EnhanceRequest(BaseModel):

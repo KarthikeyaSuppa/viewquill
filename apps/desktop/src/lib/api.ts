@@ -211,3 +211,59 @@ export interface VoiceNote {
   status: VoiceNoteStatus
   created_at: string
 }
+
+// ── Structure templates & Chapters (mirrors app/models/schemas.py StructureTemplate*/
+// Chapter*; docs/06 Phase 4 Outline/Timeline). ──
+export interface StructureTemplateBeat {
+  name: string
+  order_index: number
+  description: string
+}
+
+export interface StructureTemplate {
+  id: string
+  name: string
+  applicable_book_types: string[] | null
+  beats: StructureTemplateBeat[] | null
+}
+
+export interface Chapter {
+  id: string
+  book_id: string
+  title: string
+  order_index: number
+}
+
+// ── Outline/Timeline (mirrors app/models/schemas.py BookSceneOrder*; docs/06 Phase 4).
+// One row type backs both the Outline view and the Timeline view. ──
+export interface BookSceneOrder {
+  id: string
+  book_id: string
+  scene_id: string
+  chapter_id: string | null
+  outline_order_index: number | null
+  structure_beat: string | null
+  timeline_order_index: number | null
+  in_story_time_label: string | null
+  in_story_time_sort_key: number | null
+}
+
+// ── Continuity (mirrors app/models/schemas.py ContinuityFlagRead; docs/06 Phase 4).
+// `source` is nullable at the DB/schema level even though the check constraint restricts
+// non-null values to the three below. ──
+export type ContinuitySeverity = 'critical' | 'warning' | 'hint'
+export type ContinuityStatus = 'open' | 'dismissed' | 'resolved'
+export type ContinuitySource = 'deterministic' | 'ai' | 'manual'
+
+export interface ContinuityFlag {
+  id: string
+  book_id: string
+  scene_id: string | null
+  codex_entry_id: string | null
+  flag_type: string | null
+  severity: ContinuitySeverity
+  description: string
+  status: ContinuityStatus
+  source: ContinuitySource | null
+  created_at: string
+}

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useBook, type BookType } from '@/queries/books'
 import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
+import { OutlinePanel } from '@/components/outline/outline-panel'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import { playPageTurn, useDelight } from '@/lib/delight'
 
@@ -112,7 +113,11 @@ export function BookScreen() {
           {bookId ? <CanvasPanel bookId={bookId} /> : <EmptyPanel note="Coming in Phase 2." />}
         </TabsContent>
         <TabsContent value="outline">
-          <EmptyPanel note="Coming in Phase 4." />
+          {bookId ? (
+            <OutlinePanel bookId={bookId} book={book} />
+          ) : (
+            <EmptyPanel note="Coming in Phase 4." />
+          )}
         </TabsContent>
         <TabsContent value="draft">
           <EmptyPanel note="Coming in Phase 6." />

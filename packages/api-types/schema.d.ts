@@ -730,6 +730,218 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/structure-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Structure Templates */
+        get: operations["list_structure_templates_structure_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chapters */
+        get: operations["list_chapters_books__book_id__chapters_get"];
+        put?: never;
+        /** Create Chapter */
+        post: operations["create_chapter_books__book_id__chapters_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chapters/{chapter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Chapter */
+        delete: operations["delete_chapter_chapters__chapter_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Chapter */
+        patch: operations["update_chapter_chapters__chapter_id__patch"];
+        trace?: never;
+    };
+    "/books/{book_id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Outline */
+        get: operations["get_outline_books__book_id__outline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Timeline */
+        get: operations["get_timeline_books__book_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/scenes/{scene_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Scene */
+        post: operations["assign_scene_books__book_id__scenes__scene_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/outline/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reorder Outline */
+        post: operations["reorder_outline_books__book_id__outline_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/scenes/{scene_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Timeline */
+        post: operations["set_timeline_books__book_id__scenes__scene_id__timeline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/timeline/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reorder Timeline */
+        post: operations["reorder_timeline_books__book_id__timeline_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/continuity/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Continuity Check
+         * @description Runs Tier-1 deterministic checks always (cheap, zero LLM). Tier-2 semantic checks
+         *     (docs/11-AI-INTELLIGENCE.md §4 "Tier 2", task BE-5) only run when ``include_ai=true`` is
+         *     passed — this keeps the default check free of any LLM call, with Tier 2 opt-in on this
+         *     same route rather than a separate endpoint.
+         */
+        post: operations["run_continuity_check_books__book_id__continuity_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/continuity/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Continuity Flags */
+        get: operations["list_continuity_flags_books__book_id__continuity_flags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/continuity/flags/{flag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Continuity Flag Status */
+        patch: operations["update_continuity_flag_status_continuity_flags__flag_id__patch"];
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -751,6 +963,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AssignSceneRequest
+         * @description Partial update — only the fields provided are changed; other fields on the same
+         *     (book, scene) row — including any Timeline fields — are left untouched.
+         */
+        AssignSceneRequest: {
+            /** Chapter Id */
+            chapter_id?: string | null;
+            /** Structure Beat */
+            structure_beat?: string | null;
+            /** Outline Order Index */
+            outline_order_index?: number | null;
+        };
         /**
          * AttachRequest
          * @description Points a voice note at the entity/field it was dictated into (docs/12 "the
@@ -811,6 +1036,27 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** BookSceneOrderRead */
+        BookSceneOrderRead: {
+            /** Id */
+            id: string;
+            /** Book Id */
+            book_id: string;
+            /** Scene Id */
+            scene_id: string;
+            /** Chapter Id */
+            chapter_id: string | null;
+            /** Outline Order Index */
+            outline_order_index: number | null;
+            /** Structure Beat */
+            structure_beat: string | null;
+            /** Timeline Order Index */
+            timeline_order_index: number | null;
+            /** In Story Time Label */
+            in_story_time_label: string | null;
+            /** In Story Time Sort Key */
+            in_story_time_sort_key: number | null;
         };
         /**
          * BookUpdate
@@ -882,6 +1128,34 @@ export interface components {
             nodes: components["schemas"]["CanvasNode"][];
             /** Edges */
             edges: components["schemas"]["CanvasEdge"][];
+        };
+        /** ChapterCreate */
+        ChapterCreate: {
+            /** Title */
+            title: string;
+            /** Order Index */
+            order_index?: number | null;
+        };
+        /** ChapterRead */
+        ChapterRead: {
+            /** Id */
+            id: string;
+            /** Book Id */
+            book_id: string;
+            /** Title */
+            title: string;
+            /** Order Index */
+            order_index: number;
+        };
+        /**
+         * ChapterUpdate
+         * @description Partial update — only the fields provided are changed.
+         */
+        ChapterUpdate: {
+            /** Title */
+            title?: string | null;
+            /** Order Index */
+            order_index?: number | null;
         };
         /** CodexArcStateCreate */
         CodexArcStateCreate: {
@@ -997,6 +1271,29 @@ export interface components {
             /** Description */
             description: string | null;
         };
+        /** ContinuityFlagRead */
+        ContinuityFlagRead: {
+            /** Id */
+            id: string;
+            /** Book Id */
+            book_id: string;
+            /** Scene Id */
+            scene_id: string | null;
+            /** Codex Entry Id */
+            codex_entry_id: string | null;
+            /** Flag Type */
+            flag_type: string | null;
+            /** Severity */
+            severity: string;
+            /** Description */
+            description: string;
+            /** Status */
+            status: string;
+            /** Source */
+            source: string | null;
+            /** Created At */
+            created_at: string;
+        };
         /** EdgeCreate */
         EdgeCreate: {
             /** Source Scene Id */
@@ -1049,6 +1346,14 @@ export interface components {
             scene_id?: string | null;
             /** Book Id */
             book_id?: string | null;
+        };
+        /** FlagStatusUpdate */
+        FlagStatusUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "dismissed" | "resolved";
         };
         /** GroqKeyPresence */
         GroqKeyPresence: {
@@ -1215,6 +1520,15 @@ export interface components {
             /** Avatar */
             avatar: string | null;
         };
+        /**
+         * ReorderRequest
+         * @description Authoritative reindex — each id's position in this list becomes its new
+         *     order_index (0..n).
+         */
+        ReorderRequest: {
+            /** Scene Ids */
+            scene_ids: string[];
+        };
         /** SceneCreate */
         SceneCreate: {
             /**
@@ -1329,6 +1643,19 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** StructureTemplateRead */
+        StructureTemplateRead: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Applicable Book Types */
+            applicable_book_types: string[] | null;
+            /** Beats */
+            beats: {
+                [key: string]: unknown;
+            }[] | null;
+        };
         /** TestConnectionResult */
         TestConnectionResult: {
             /** Ok */
@@ -1337,6 +1664,19 @@ export interface components {
             reason?: string | null;
             /** Provider */
             provider?: string | null;
+        };
+        /**
+         * TimelineSetRequest
+         * @description Partial update — only the fields provided are changed; any already-set Outline
+         *     fields on the same (book, scene) row are left untouched.
+         */
+        TimelineSetRequest: {
+            /** Timeline Order Index */
+            timeline_order_index?: number | null;
+            /** In Story Time Label */
+            in_story_time_label?: string | null;
+            /** In Story Time Sort Key */
+            in_story_time_sort_key?: number | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -3278,6 +3618,472 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VoiceNoteRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_structure_templates_structure_templates_get: {
+        parameters: {
+            query?: {
+                book_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructureTemplateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chapters_books__book_id__chapters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chapter_books__book_id__chapters_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chapter_chapters__chapter_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_chapter_chapters__chapter_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_outline_books__book_id__outline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timeline_books__book_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_scene_books__book_id__scenes__scene_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignSceneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_outline_books__book_id__outline_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_timeline_books__book_id__scenes__scene_id__timeline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimelineSetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_timeline_books__book_id__timeline_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookSceneOrderRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_continuity_check_books__book_id__continuity_check_post: {
+        parameters: {
+            query?: {
+                include_ai?: boolean;
+            };
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContinuityFlagRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_continuity_flags_books__book_id__continuity_flags_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContinuityFlagRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_continuity_flag_status_continuity_flags__flag_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContinuityFlagRead"];
                 };
             };
             /** @description Validation Error */

@@ -87,10 +87,14 @@ def test_app_settings_has_both_partial_unique_indexes(client: TestClient) -> Non
     assert "uq_app_settings_global_key" in names
 
 
-# ── Round-trip: downgrade -1, then upgrade head, with no error ────────────────
+# ── Round-trip: downgrade below this revision, then upgrade head, with no error ───────
 def test_migration_round_trips_downgrade_then_upgrade(client: TestClient) -> None:
     cfg = make_alembic_config()
-    command.downgrade(cfg, "-1")
+    # Target the explicit revision below `21b2ddd10525` (this module's subject) rather than
+    # the relative "-1", which only meant "undo 21b2ddd10525" while it was still head. Later
+    # revisions (e.g. d25598084db3, widening continuity_flags.source) sit on top of it now,
+    # so "-1" would instead undo whichever migration is newest — not what this test checks.
+    command.downgrade(cfg, "9cc2ce21fa1e")
     # Old shape is back.
     assert _column_names("app_settings") == {"key", "value"}
     assert "users" not in _table_names()

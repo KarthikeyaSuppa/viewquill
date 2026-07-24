@@ -301,7 +301,7 @@ class ContinuityFlag(Base):
         ),
         CheckConstraint("severity IN ('critical','warning','hint')", name="severity"),
         CheckConstraint("status IN ('open','dismissed','resolved')", name="status"),
-        CheckConstraint("source IN ('ai','manual')", name="source"),
+        CheckConstraint("source IN ('deterministic','ai','manual')", name="source"),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)

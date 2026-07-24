@@ -19,18 +19,24 @@ from app.api import (
     auth as auth_api,
     books as books_api,
     canvas as canvas_api,
+    chapters as chapters_api,
     codex as codex_api,
+    continuity as continuity_api,
     health,
     images as images_api,
     llm as llm_api,
+    outline as outline_api,
     profiles as profiles_api,
     scenes as scenes_api,
     settings as settings_api,
+    structure_templates as structure_templates_api,
     voice as voice_api,
 )
 from app.config import get_settings
+from app.db.base import SessionLocal
 from app.db.migrate import run_migrations
 from app.services.ollama_health import check_ollama
+from app.services.structure_templates import seed_structure_templates
 
 logger = logging.getLogger("quillnight")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -45,6 +51,12 @@ async def lifespan(app: FastAPI):
     logger.info("Quillnight sidecar starting — data dir: %s", cfg.data_dir)
     run_migrations()
     logger.info("Database migrated to head: %s", cfg.db_path)
+    try:
+        with SessionLocal() as db:
+            seeded = seed_structure_templates(db)
+        logger.info("Structure templates seeded (%d new).", seeded)
+    except Exception:  # noqa: BLE001 — seeding must never block startup
+        logger.exception("Structure template seeding failed; continuing without it.")
     probe = check_ollama()
     logger.info("Ollama %s (%s)", "reachable" if probe.reachable else "unreachable", probe.detail)
     yield
@@ -76,6 +88,10 @@ def create_app() -> FastAPI:
     app.include_router(images_api.router)
     app.include_router(llm_api.router)
     app.include_router(voice_api.router)
+    app.include_router(structure_templates_api.router)
+    app.include_router(chapters_api.router)
+    app.include_router(outline_api.router)
+    app.include_router(continuity_api.router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:
