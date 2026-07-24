@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(canvas_api.router)
     app.include_router(codex_api.router)
     app.include_router(images_api.router)
+    app.include_router(images_api.entities_router)
     app.include_router(llm_api.router)
     app.include_router(voice_api.router)
     app.include_router(structure_templates_api.router)

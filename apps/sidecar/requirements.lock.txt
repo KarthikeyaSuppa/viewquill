@@ -39,6 +39,7 @@ MarkupSafe==3.0.3
 multidict==6.7.1
 openai==2.46.0
 packaging==26.2
+pillow==12.3.0
 pluggy==1.6.0
 propcache==0.5.2
 pycparser==3.0

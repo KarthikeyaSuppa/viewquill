@@ -14,6 +14,7 @@ dependencies = [
     "pydantic-settings==2.14.2",
     "litellm==1.91.4",
     "argon2-cffi==25.1.0",
+    "Pillow==12.3.0",
 ]
 
 # Deferred to their roadmap phases so this install stays model-free
@@ -33,6 +34,11 @@ ignore = ["S101"]  # allow asserts in tests
 
 [tool.ruff.lint.per-file-ignores]
 "app/db/migrations/*" = ["E501"]
+
+# FastAPI's dependency-injection markers are the canonical, intended use of a call in an
+# argument default (B008). Treat them as immutable so B008 stops flagging every route.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Header", "fastapi.Body", "fastapi.Form", "fastapi.File", "fastapi.Cookie"]
 
 [build-system]
 requires = ["setuptools>=68"]

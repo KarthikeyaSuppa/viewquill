@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
-from app.models.schemas import BookConvert, BookCreate, BookRead, BookUpdate
-from app.services import book_service
+from app.models.schemas import BookConvert, BookCreate, BookRead, BookUpdate, ImageRead
+from app.services import book_service, entity_images_service, images_service
 
 router = APIRouter(prefix="/books", tags=["books"])
 
@@ -65,3 +65,16 @@ def convert_book_type(
 def delete_book(book_id: str, db: Session = Depends(get_db)) -> None:
     if not book_service.delete_book(db, book_id):
         raise HTTPException(status_code=404, detail="Book not found")
+
+
+@router.get("/{book_id}/images", response_model=list[ImageRead])
+def get_book_images(book_id: str, db: Session = Depends(get_db)) -> list[ImageRead]:
+    """Every image that "belongs to" this Book for `.quillproj` export purposes — the union
+    of images attached directly to the Book, to any Scene on its canvas, to any Codex entry
+    linked to it, plus its cover image (docs/06 Phase 5 task BE-4). See
+    ``entity_images_service.gather_book_images`` for the exact scoping rules — this route
+    exists to 404 on an unknown Book before delegating to that service."""
+    if book_service.get_book(db, book_id) is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    images = entity_images_service.gather_book_images(db, book_id)
+    return [images_service.to_image_read(db, image) for image in images]

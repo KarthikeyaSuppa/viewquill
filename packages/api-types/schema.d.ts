@@ -162,6 +162,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/books/{book_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Book Images
+         * @description Every image that "belongs to" this Book for `.quillproj` export purposes — the union
+         *     of images attached directly to the Book, to any Scene on its canvas, to any Codex entry
+         *     linked to it, plus its cover image (docs/06 Phase 5 task BE-4). See
+         *     ``entity_images_service.gather_book_images`` for the exact scoping rules — this route
+         *     exists to 404 on an unknown Book before delegating to that service.
+         */
+        get: operations["get_book_images_books__book_id__images_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenes": {
         parameters: {
             query?: never;
@@ -525,10 +549,32 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Images */
+        get: operations["list_images_images_get"];
         put?: never;
         /** Upload Image */
         post: operations["upload_image_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{image_id}/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image Meta
+         * @description Metadata (including tags) for one image — distinct from ``GET /{image_id}``, which
+         *     serves the raw image bytes.
+         */
+        get: operations["get_image_meta_images__image_id__meta_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -544,6 +590,103 @@ export interface paths {
         };
         /** Get Image */
         get: operations["get_image_images__image_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Image */
+        delete: operations["delete_image_images__image_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Image */
+        patch: operations["update_image_images__image_id__patch"];
+        trace?: never;
+    };
+    "/images/{image_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Image Tag */
+        post: operations["add_image_tag_images__image_id__tags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{image_id}/tags/{tag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Image Tag */
+        delete: operations["remove_image_tag_images__image_id__tags__tag__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{image_id}/thumb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image Thumb
+         * @description Serves the thumbnail. Thumbnails are best-effort (see images_service._write_thumbnail)
+         *     — if one is missing on disk (generation failed, or the row predates this feature), falls
+         *     back to serving the full image so the UI never 404s a thumb request for a real image.
+         */
+        get: operations["get_image_thumb_images__image_id__thumb_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{image_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Entity Image Link */
+        post: operations["create_entity_image_link_images__image_id__links_post"];
+        /**
+         * Delete Entity Image Link
+         * @description 204 either way — deleting a link that doesn't (or no longer) exists is a no-op, not
+         *     an error (mirrors ``DELETE /images/{image_id}/tags/{tag}``).
+         */
+        delete: operations["delete_entity_image_link_images__image_id__links_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/entities/{entity_type}/{entity_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entity Images */
+        get: operations["list_entity_images_entities__entity_type___entity_id__images_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1347,6 +1490,31 @@ export interface components {
             /** Book Id */
             book_id?: string | null;
         };
+        /** EntityImageLinkCreate */
+        EntityImageLinkCreate: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "book" | "scene" | "codex_entry";
+            /** Entity Id */
+            entity_id: string;
+            /** Role */
+            role?: string | null;
+        };
+        /** EntityImageRead */
+        EntityImageRead: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Role */
+            role: string | null;
+        };
         /** FlagStatusUpdate */
         FlagStatusUpdate: {
             /**
@@ -1412,10 +1580,33 @@ export interface components {
             height: number | null;
             /** Checksum Sha256 */
             checksum_sha256: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
             /** Created At */
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** ImageTagAdd */
+        ImageTagAdd: {
+            /** Tag */
+            tag: string;
+        };
+        /**
+         * ImageUpdate
+         * @description Partial update — only the fields provided are changed. ``description`` may be set to
+         *     ``""`` deliberately (clearing it); leaving it unset leaves the stored value untouched —
+         *     see the `exclude_unset` dict-based partial-update pattern used by every other PATCH route
+         *     in this codebase (e.g. `CodexEntryUpdate`).
+         */
+        ImageUpdate: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Description */
+            description?: string | null;
         };
         /**
          * LinkCreate
@@ -2130,6 +2321,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BookRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_book_images_books__book_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"][];
                 };
             };
             /** @description Validation Error */
@@ -3291,12 +3513,50 @@ export interface operations {
             };
         };
     };
+    list_images_images_get: {
+        parameters: {
+            query?: {
+                /** @description 'reference_pool' or 'finalized_scene'. */
+                bucket?: string | null;
+                /** @description Exact tag match. */
+                tag?: string | null;
+                /** @description Case-insensitive substring match over name/description/tags. */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_image_images_post: {
         parameters: {
             query?: {
                 /** @description Original filename (metadata only). */
                 filename?: string | null;
                 display_name?: string | null;
+                /** @description 'reference_pool' or 'finalized_scene'. */
+                bucket?: string;
             };
             header?: never;
             path?: never;
@@ -3306,6 +3566,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_meta_images__image_id__meta_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3342,6 +3633,266 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_images__image_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_image_images__image_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_image_tag_images__image_id__tags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageTagAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_image_tag_images__image_id__tags__tag__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+                tag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_thumb_images__image_id__thumb_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entity_image_link_images__image_id__links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityImageLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_entity_image_link_images__image_id__links_delete: {
+        parameters: {
+            query: {
+                entity_type: string;
+                entity_id: string;
+                role?: string | null;
+            };
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entity_images_entities__entity_type___entity_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"][];
                 };
             };
             /** @description Validation Error */

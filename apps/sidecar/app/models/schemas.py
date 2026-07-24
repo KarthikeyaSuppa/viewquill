@@ -269,9 +269,11 @@ class CodexEntryRead(BaseModel):
     updated_at: str
 
 
-# ── Images (docs/03-DATA-MODEL.md `images`; docs/06 Phase 3 task BE-3) — minimal single-
-# image attach/serve. `bucket` is always "reference_pool" in this scope (Phase 5 adds
-# "finalized_scene"); width/height are left null (no image parsing yet). ────────────────
+# ── Images (docs/03-DATA-MODEL.md `images` / `image_tags`; docs/06 Phase 3 task BE-3,
+# Phase 5 tasks BE-1/BE-2) — both buckets, real Pillow-decoded dimensions, thumbnails, and
+# freeform tags. `tags` is always populated (sorted) alongside the Image row itself so
+# list/detail/upload responses stay consistent — see
+# app/services/images_service.py's `_read_with_tags` helper. ───────────────────────────
 class ImageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -284,8 +286,48 @@ class ImageRead(BaseModel):
     width: int | None
     height: int | None
     checksum_sha256: str | None
+    tags: list[str] = []
     created_at: str
     updated_at: str
+
+
+class ImageUpdate(BaseModel):
+    """Partial update — only the fields provided are changed. ``description`` may be set to
+    ``""`` deliberately (clearing it); leaving it unset leaves the stored value untouched —
+    see the `exclude_unset` dict-based partial-update pattern used by every other PATCH route
+    in this codebase (e.g. `CodexEntryUpdate`)."""
+
+    display_name: str | None = None
+    description: str | None = None
+
+
+class ImageTagAdd(BaseModel):
+    tag: str
+
+
+# ── Polymorphic image<->entity attach (docs/03-DATA-MODEL.md `entity_images`; docs/06
+# Phase 5 task BE-3) — links an Image to a book/scene/codex_entry, independent of
+# `cover_image_id` / `primary_image_id` (those are single-slot pointers; this is a
+# many-to-many attach list, e.g. a Scene's moodboard). Named `EntityImageLinkCreate`
+# rather than `LinkCreate` to avoid clashing with the canvas `LinkCreate` schema above
+# (Book<->Scene canvas membership), which is an unrelated resource. ─────────────────────
+EntityImageEntityType = Literal["book", "scene", "codex_entry"]
+
+
+class EntityImageLinkCreate(BaseModel):
+    entity_type: EntityImageEntityType
+    entity_id: str = Field(min_length=1)
+    role: str | None = None
+
+
+class EntityImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    image_id: str
+    entity_type: str
+    entity_id: str
+    role: str | None
 
 
 # ── Structure templates (docs/03-DATA-MODEL.md `structure_templates`; docs/06 Phase 4

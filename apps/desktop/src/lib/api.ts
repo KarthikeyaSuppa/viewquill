@@ -180,20 +180,38 @@ export interface CodexArcState {
   created_at: string
 }
 
-// ── Images (mirrors app/models/schemas.py ImageRead; docs/06 Phase 3). Upload is a raw
-// request body (not multipart, not JSON) — see useUploadImage in src/queries/codex.ts. ──
+// ── Images (mirrors app/models/schemas.py ImageRead/EntityImageRead; docs/06 Phase 3 BE-3,
+// Phase 5 BE-1..BE-4). Upload is a raw request body (not multipart, not JSON) — see
+// useUploadImage in src/queries/codex.ts (Phase 3, Codex-entry-scoped) and the fuller
+// src/queries/images.ts (Phase 5, the Images tab + reference-pool gallery). ──
+export type ImageBucket = 'reference_pool' | 'finalized_scene'
+
 export interface ImageRead {
   id: string
-  bucket: string
+  bucket: ImageBucket
   storage_path: string
-  display_name: string | null
+  display_name: string
   original_filename: string | null
   description: string | null
   width: number | null
   height: number | null
-  checksum_sha256: string
+  checksum_sha256: string | null
+  tags: string[]
   created_at: string
   updated_at: string
+}
+
+// ── Entity <-> Image links (mirrors app/models/schemas.py EntityImageRead/
+// EntityImageLinkCreate; docs/06 Phase 5 task BE-3) — a many-to-many attach list (e.g. a
+// Scene's moodboard), independent of single-slot pointers like `primary_image_id`. ──
+export type EntityImageEntityType = 'book' | 'scene' | 'codex_entry'
+
+export interface EntityImageRead {
+  id: string
+  image_id: string
+  entity_type: EntityImageEntityType
+  entity_id: string
+  role: string | null
 }
 
 // ── Voice notes (mirrors app/models/schemas.py VoiceNote*; docs/12, docs/06 Phase 2 H4).

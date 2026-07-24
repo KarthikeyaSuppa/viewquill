@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +45,14 @@ import {
   type ScreenplayElementType,
 } from '@/queries/screenplay'
 import { acceptLog, useEnhance } from '@/queries/enhance'
+import {
+  imageThumbUrl,
+  useAttachImage,
+  useDetachImage,
+  useEntityImages,
+  useImages,
+  useUploadImage,
+} from '@/queries/images'
 import type { BookType } from '@/queries/books'
 import type { SceneFlowNode } from '@/components/canvas/nodes'
 import { EnhanceDiff } from '@/components/canvas/enhance-diff'
@@ -254,12 +262,15 @@ function NodeEditorBody({
           {script ? (
             <ElementsEditor sceneId={sceneId} />
           ) : (
-            <DescriptionField
-              sceneId={sceneId}
-              bookId={bookId}
-              description={description}
-              setDescription={setDescription}
-            />
+            <>
+              <DescriptionField
+                sceneId={sceneId}
+                bookId={bookId}
+                description={description}
+                setDescription={setDescription}
+              />
+              <SceneImagesSection sceneId={sceneId} />
+            </>
           )}
 
           <Button onClick={onSave} disabled={titleInvalid || savePending} className="self-start">
@@ -421,6 +432,137 @@ function DescriptionField({
       )}
       {enhance.error && (
         <p className="text-xs text-destructive">Enhance failed: {enhance.error}</p>
+      )}
+    </div>
+  )
+}
+
+/** Prose-book body: attach/detach finalized images on this scene (docs/06 Phase 5 task
+ * FE-B). A node here IS a scene, so the node's `sceneId` is used directly as
+ * `entity_id`/`entity_type: 'scene'` for the polymorphic `entity_images` link — no separate
+ * lookup needed. Two ways in: upload a brand-new `finalized_scene` image (attaches it the
+ * moment the upload succeeds), or pick one already sitting in the finalized_scene pool
+ * (e.g. one exported from the Images tab's "Reference pool" earlier). Detach (✕) only ever
+ * removes the link — the image itself, and any other entity it's attached to, is
+ * untouched. */
+function SceneImagesSection({ sceneId }: { sceneId: string }) {
+  const { data: attached } = useEntityImages('scene', sceneId)
+  const { data: pool } = useImages('finalized_scene')
+  const attachImage = useAttachImage()
+  const detachImage = useDetachImage()
+  const uploadImage = useUploadImage()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const attachedIds = new Set((attached ?? []).map((image) => image.id))
+  const pickable = (pool ?? []).filter((image) => !attachedIds.has(image.id))
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    uploadImage.mutate(
+      { file, bucket: 'finalized_scene' },
+      {
+        onSuccess: (image) =>
+          attachImage.mutate({ imageId: image.id, entity_type: 'scene', entity_id: sceneId, role: 'finalized' }),
+      },
+    )
+  }
+
+  function handlePickExisting(imageId: string) {
+    attachImage.mutate({ imageId, entity_type: 'scene', entity_id: sceneId, role: 'finalized' })
+  }
+
+  function handleDetach(imageId: string) {
+    detachImage.mutate({ imageId, entity_type: 'scene', entity_id: sceneId, role: 'finalized' })
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <Label>Images</Label>
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pickable.length === 0}
+                className="gap-1 text-xs"
+              >
+                <ImagePlus className="size-3.5" />
+                Attach existing
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-64">
+              {pickable.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                  No other finalized images to attach.
+                </p>
+              ) : (
+                pickable.map((image) => (
+                  <DropdownMenuItem
+                    key={image.id}
+                    onSelect={() => handlePickExisting(image.id)}
+                    className="gap-2"
+                  >
+                    <img
+                      src={imageThumbUrl(image.id)}
+                      alt=""
+                      className="size-6 rounded object-cover"
+                    />
+                    <span className="truncate">{image.display_name}</span>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadImage.isPending}
+            className="gap-1 text-xs"
+          >
+            <Plus className="size-3.5" />
+            {uploadImage.isPending ? 'Uploading…' : 'Upload'}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
+      </div>
+
+      {(attached?.length ?? 0) === 0 ? (
+        <p className="text-xs text-muted-foreground">No images attached to this scene yet.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {attached!.map((image) => (
+            <div
+              key={image.id}
+              className="group relative size-14 overflow-hidden rounded-lg border border-border"
+            >
+              <img
+                src={imageThumbUrl(image.id)}
+                alt={image.display_name}
+                className="size-full object-cover"
+              />
+              <button
+                type="button"
+                aria-label={`Detach ${image.display_name}`}
+                onClick={() => handleDetach(image.id)}
+                disabled={detachImage.isPending}
+                className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

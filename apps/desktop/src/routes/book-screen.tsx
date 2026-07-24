@@ -14,6 +14,7 @@ import {
 import { useBook, type BookType } from '@/queries/books'
 import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
 import { OutlinePanel } from '@/components/outline/outline-panel'
+import { ImagesPanel } from '@/components/images/images-panel'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import { playPageTurn, useDelight } from '@/lib/delight'
 
@@ -24,7 +25,7 @@ const BOOK_TYPE_LABELS: Record<BookType, string> = {
   single_scene: 'Single Scene',
 }
 
-type BookTab = 'canvas' | 'outline' | 'draft'
+type BookTab = 'canvas' | 'outline' | 'images' | 'draft'
 
 /** True when the browser supports the View Transitions API — feature-detected so this is
  * a no-op fallback (a plain state update) everywhere it isn't (docs/10 §5). */
@@ -87,6 +88,7 @@ export function BookScreen() {
           <TabsList>
             <TabsTrigger value="canvas">Canvas</TabsTrigger>
             <TabsTrigger value="outline">Outline</TabsTrigger>
+            <TabsTrigger value="images">Images</TabsTrigger>
             <TabsTrigger value="draft">Draft</TabsTrigger>
           </TabsList>
 
@@ -118,6 +120,9 @@ export function BookScreen() {
           ) : (
             <EmptyPanel note="Coming in Phase 4." />
           )}
+        </TabsContent>
+        <TabsContent value="images">
+          {bookId ? <ImagesPanel bookId={bookId} /> : <EmptyPanel note="Coming in Phase 5." />}
         </TabsContent>
         <TabsContent value="draft">
           <EmptyPanel note="Coming in Phase 6." />
