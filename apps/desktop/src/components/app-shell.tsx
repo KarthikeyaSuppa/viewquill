@@ -5,6 +5,7 @@ import { Library, LogOut, Settings } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
+import { HelpGuide } from '@/components/help/help-guide'
 import { Button } from '@/components/ui/button'
 import { resolveAvatar } from '@/components/auth/avatars'
 import { useSettings } from '@/queries/settings'
@@ -17,6 +18,11 @@ const NAV_ITEMS = [
   { to: '/', label: 'Library', icon: Library, end: true },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
+
+/** Shared base styling for every sidebar nav entry — routed `NavLink`s add their own
+ * `isActive` state on top of this; the Help trigger (not a route) uses it as-is. */
+const NAV_ITEM_CLASS =
+  'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
 
 /**
  * App chrome (docs/10): a floating glass sidebar (wordmark, nav, theme toggle) around
@@ -71,8 +77,7 @@ export function AppShell() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors',
-                  'hover:bg-accent hover:text-foreground',
+                  NAV_ITEM_CLASS,
                   isActive &&
                     'bg-primary/10 text-foreground ring-1 ring-primary/30 shadow-[0_0_16px_-2px_var(--primary)]',
                 )
@@ -82,6 +87,8 @@ export function AppShell() {
               {label}
             </NavLink>
           ))}
+
+          <HelpGuide triggerClassName={NAV_ITEM_CLASS} />
         </nav>
 
         <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">

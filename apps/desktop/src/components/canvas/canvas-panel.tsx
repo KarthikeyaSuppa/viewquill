@@ -18,14 +18,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import NumberFlow from '@number-flow/react'
-import { LayoutGrid, Lightbulb, MapPinned, Plus, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { LayoutGrid, Lightbulb, MapPinned, Sparkles } from 'lucide-react'
+import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import {
   useCanvas,
   useCreateEdge,
@@ -55,7 +49,7 @@ const DEFAULT_TITLES: Record<NodeType, string> = {
   thought: 'Untitled thought',
 }
 
-const NODE_MENU: { nodeType: NodeType; label: string; icon: typeof Sparkles }[] = [
+export const NODE_MENU: { nodeType: NodeType; label: string; icon: typeof Sparkles }[] = [
   { nodeType: 'scene', label: 'Scene', icon: LayoutGrid },
   { nodeType: 'plot_point', label: 'Plot Point', icon: MapPinned },
   { nodeType: 'thought', label: 'Thought', icon: Lightbulb },
@@ -220,6 +214,39 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     [createNode, nodeCount, fireConfetti],
   )
 
+  // Bridges `handleAddNode` out to the book-screen tab row, which renders the "Add node"
+  // control on the tab bar (docs/06 Phase 2) but sits outside this component (and outside
+  // the ReactFlowProvider). Cleared on unmount so a stale handler is never left registered.
+  //
+  // `handleAddNode` gets a fresh identity every render (it closes over `nodeCount` etc.), so
+  // registering it directly as the store's `addNode` would re-write the store — and thus
+  // re-render `BookScreen`, which re-renders this component's whole subtree — on every render,
+  // forever (React's nested-update-depth guard eventually throws "Maximum update depth
+  // exceeded"). Instead we register one function whose *identity* never changes for the
+  // lifetime of this component, and have it delegate through a ref to whatever the latest
+  // `handleAddNode` is. The store write (and the resulting `BookScreen` re-render) then only
+  // happens once, on mount/unmount, instead of every render.
+  const handleAddNodeRef = useRef(handleAddNode)
+  useEffect(() => {
+    handleAddNodeRef.current = handleAddNode
+  }, [handleAddNode])
+
+  const stableAddNode = useRef((nodeType: NodeType) => handleAddNodeRef.current(nodeType)).current
+
+  const setAddNode = useCanvasActionsStore((s) => s.setAddNode)
+  useEffect(() => {
+    setAddNode(stableAddNode, false)
+    return () => setAddNode(null, false)
+  }, [setAddNode, stableAddNode])
+
+  // `addNodePending` is a plain boolean — updating it doesn't need to touch the `addNode`
+  // function identity at all, so it gets its own effect keyed only on the primitive pending
+  // flag (bounded churn: it only fires when the mutation's pending state actually flips).
+  const isPending = createNode.isPending
+  useEffect(() => {
+    setAddNode(stableAddNode, isPending)
+  }, [setAddNode, stableAddNode, isPending])
+
   const isEmpty = useMemo(() => !isLoading && nodes.length === 0, [isLoading, nodes.length])
 
   // Total words across the canvas's scenes (docs/10 §5 word ticker): sums each node's
@@ -258,7 +285,12 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         proOptions={{ hideAttribution: true }}
       >
         <Background className="!bg-background" gap={24} size={1} />
-        <Controls className="!border-none !shadow-none [&>button]:!border-border [&>button]:!bg-card [&>button]:!text-foreground" />
+        <Controls
+          position="top-right"
+          style={{ top: '3.75rem', right: '1rem' }}
+          className="!border-none !shadow-none [&>button]:!border-border [&>button]:!bg-card [&>button]:!text-foreground"
+        />
+        {/* Controls sits below the word-count pill (right-4 top-4) via the top offset above. */}
         <MiniMap
           className="!overflow-hidden !rounded-lg !border !border-border"
           maskColor="oklch(0.2 0 0 / 0.35)"
@@ -272,31 +304,12 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
           canvas, never over the manuscript surface. */}
       {theme === 'night' && delightLevel !== 'calm' && <Firefly />}
 
-      <div className="glass glass-edge pointer-events-auto absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl px-2 py-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" disabled={createNode.isPending}>
-              <Plus className="size-4" />
-              Add node
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {NODE_MENU.map(({ nodeType, label, icon: Icon }) => (
-              <DropdownMenuItem key={nodeType} onSelect={() => handleAddNode(nodeType)}>
-                <Icon />
-                {label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       <div
         className="glass glass-edge pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground"
-        aria-label="Total words on this canvas"
+        aria-label="Total words penned on this canvas"
       >
         {motionOk ? <NumberFlow value={totalWords} /> : <span>{totalWords}</span>}
-        <span>words</span>
+        <span>penned</span>
       </div>
 
       {isEmpty && (
@@ -304,7 +317,8 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
           <div className="glass glass-edge pointer-events-none flex flex-col items-center gap-1 rounded-2xl px-8 py-10 text-center">
             <p className="text-sm font-medium">Blank canvas — add your first node</p>
             <p className="max-w-xs text-xs text-muted-foreground">
-              Scenes, plot points, and loose thoughts all start from “Add node” above.
+              Scenes, plot points, and loose thoughts all start from the “Add node” button in
+              the toolbar.
             </p>
           </div>
         </div>

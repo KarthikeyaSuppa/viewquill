@@ -5,10 +5,10 @@
  * used by Codex entity editors (and, later, story-level generation controls),
  * so labels/values stay consistent everywhere they're rendered or stored.
  *
- * Vocabulary/naming inspiration only (relationship types, character roles,
- * trait palette, etc.) drawn loosely from the VIBE repo's conventions
- * (github.com/KarthikeyaSuppa/VIBE) — that repo has NO license, so no code
- * from it is copied here; only the idea of "which words belong in this list"
+ * Vocabulary/naming (relationship types, character roles, trait palette, etc.)
+ * sourced from the author's own VIBE repo (github.com/KarthikeyaSuppa/VIBE),
+ * which the user solely owns and has authorized reusing directly (selectively
+ * adapted, not a wholesale clone); the idea of "which words belong in this list"
  * was referenced.
  *
  * Two sections below:

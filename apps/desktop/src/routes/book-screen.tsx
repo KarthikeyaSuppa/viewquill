@@ -1,12 +1,19 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useBook, type BookType } from '@/queries/books'
-import { CanvasPanel } from '@/components/canvas/canvas-panel'
+import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
+import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import { playPageTurn, useDelight } from '@/lib/delight'
 
 const BOOK_TYPE_LABELS: Record<BookType, string> = {
@@ -35,6 +42,8 @@ export function BookScreen() {
   const { data: book, isLoading } = useBook(bookId)
   const { motionOk, soundsOk } = useDelight()
   const [tab, setTab] = useState<BookTab>('canvas')
+  const addNode = useCanvasActionsStore((s) => s.addNode)
+  const addNodePending = useCanvasActionsStore((s) => s.addNodePending)
 
   const handleTabChange = useCallback(
     (next: string) => {
@@ -73,11 +82,32 @@ export function BookScreen() {
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange}>
-        <TabsList>
-          <TabsTrigger value="canvas">Canvas</TabsTrigger>
-          <TabsTrigger value="outline">Outline</TabsTrigger>
-          <TabsTrigger value="draft">Draft</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="canvas">Canvas</TabsTrigger>
+            <TabsTrigger value="outline">Outline</TabsTrigger>
+            <TabsTrigger value="draft">Draft</TabsTrigger>
+          </TabsList>
+
+          {tab === 'canvas' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" disabled={!addNode || addNodePending}>
+                  <Plus className="size-4" />
+                  Add node
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {NODE_MENU.map(({ nodeType, label, icon: Icon }) => (
+                  <DropdownMenuItem key={nodeType} onSelect={() => addNode?.(nodeType)}>
+                    <Icon />
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
         <TabsContent value="canvas">
           {bookId ? <CanvasPanel bookId={bookId} /> : <EmptyPanel note="Coming in Phase 2." />}
         </TabsContent>

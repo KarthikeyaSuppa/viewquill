@@ -64,9 +64,16 @@ A license check across the closest-match repos found for due diligence (not just
 - **`wildwinter/screenplay-tools`** (already chosen for Fountain/FDX export) has a sibling project **`wildwinter/fountain-tools`** and a comparable alternative **`vilcans/screenplain`** (MIT) — if `screenplay-tools`' FDX fidelity (risk item above) doesn't hold up in the Phase 6 verification pass, `screenplain` is a documented fallback worth trying before hand-rolling an FDX writer.
 - **`story-apps/starc`** ("Story Architect") imports a broader range of formats (FDX, docx, odt, Trelby, Celtx, Fountain) than Trelby alone — worth a look if the Final Draft tab's import needs ever expand beyond Quillnight's own canonical data.
 
-## Author's own prior project — VIBE (conventions to adopt, code not reusable)
+## Author's own prior project — VIBE (owner-authorized reuse; selective)
 
-The author's earlier project **`KarthikeyaSuppa/VIBE`** ("Virtual Interactive Builder Of Experiences" — a RAG story generator; FastAPI + React/Vite/Tailwind + MongoDB) is worth mining for *conventions*, but has **no LICENSE file → all rights reserved → do not copy its code verbatim** (same rule as the badge-without-LICENSE repos above; the author owning both projects doesn't change the licensing hygiene kept for portability). Its data-model ideas and vocabularies are fair to re-express in our own words/structure:
+> **UPDATE (2026-07-23):** The user confirmed they are the **sole owner** of `KarthikeyaSuppa/VIBE`
+> and granted permission to **use it directly** (code + content, not just conventions). This
+> supersedes the earlier "no LICENSE → all rights reserved → don't copy" caution below — that rule
+> does not apply to a repo the user owns and authorizes. Reuse **selectively** (adapt the relevant
+> vocab/field shapes/presets; do not blindly clone the whole project), and keep Quillnight's own
+> structure/idioms. If VIBE code is pulled in verbatim, note its origin in a comment.
+
+The author's earlier project **`KarthikeyaSuppa/VIBE`** ("Virtual Interactive Builder Of Experiences" — a RAG story generator; FastAPI + React/Vite/Tailwind + MongoDB) is a first-class source to mine — for both *conventions* and actual *code/content* — per the owner authorization above. Its data-model ideas and vocabularies:
 
 - **Genre vocabulary + per-genre style presets** (the strongest reusable bit): genres `fantasy | scifi | romance | mystery | horror | adventure | general`, each with a preset `tone`, `pacing`, an ordinal `character_focus` / `setting_emphasis` (`balanced < moderate < high < very high`), and suggested `elements` tags. These map directly onto the **dropdowns / selects / sliders** the user requested for describing stories/scenes/characters.
 - **Entity field shapes**: Character `{name, role, traits[], backstory, relationships[]}`; Scene `{type, location, description, participants[], actions}`; Story `{title, themes[], text, plotpoints, characters[]}`. These fold naturally into Quillnight's `codex_entries.custom_fields` JSON and scene metadata — no schema change required to *store* them.
