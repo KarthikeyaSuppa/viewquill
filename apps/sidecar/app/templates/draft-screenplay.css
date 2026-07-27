@@ -1,0 +1,115 @@
+/* WeasyPrint stylesheet: screenplay style (book_type movie_script / short_film_script).
+   Loaded by app/services/export_pdf.py `_render_pdf_weasyprint` and inlined into
+   draft.html.j2's <style> block. Inert on this build machine (no WeasyPrint runtime) — see
+   that module's docstring. Courier + industry-standard-ish indentation, deliberately
+   approximate since this is a PDF export, not a Fountain/FDX authoring format. */
+
+@page {
+  size: letter;
+  margin: 1in;
+}
+
+body {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12pt;
+  line-height: 1.15;
+  color: #000;
+}
+
+.title-page {
+  text-align: center;
+  page-break-after: always;
+}
+
+.book-title {
+  font-size: 24pt;
+  text-transform: uppercase;
+  margin-top: 2in;
+  margin-bottom: 0.3in;
+}
+
+.logline {
+  font-style: italic;
+  font-size: 12pt;
+}
+
+.front-matter {
+  margin-top: 0.6in;
+  font-size: 10pt;
+  text-align: left;
+  display: inline-block;
+}
+
+.front-matter-row {
+  display: flex;
+  gap: 0.4em;
+}
+
+.front-matter dt {
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+.cover-image {
+  max-width: 4in;
+  max-height: 5in;
+  margin-top: 0.5in;
+}
+
+.chapter {
+  page-break-before: always;
+}
+
+.chapter-title {
+  font-size: 16pt;
+  text-align: center;
+  margin-bottom: 0.4in;
+}
+
+.scene-title {
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 0.3in;
+}
+
+.scene-desc {
+  margin: 0 0 0.2in 0;
+}
+
+.el {
+  margin: 0 0 0.15in 0;
+  white-space: pre-wrap;
+}
+
+.el-scene_heading {
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.el-action, .el-shot {
+  margin-left: 0;
+}
+
+.el-character {
+  margin-left: 2.2in;
+  text-transform: uppercase;
+}
+
+.el-dialogue, .el-dual_dialogue {
+  margin-left: 1in;
+  margin-right: 1.5in;
+}
+
+.el-parenthetical {
+  margin-left: 1.6in;
+  font-style: italic;
+}
+
+.el-transition {
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.page-break {
+  page-break-before: always;
+}

@@ -1,0 +1,82 @@
+/* WeasyPrint stylesheet: novel-manuscript style (book_type NOT movie_script/short_film_script).
+   Loaded by app/services/export_pdf.py `_render_pdf_weasyprint` and inlined into
+   draft.html.j2's <style> block. Inert on this build machine (no WeasyPrint runtime) — see
+   that module's docstring. */
+
+@page {
+  size: letter;
+  margin: 1in;
+}
+
+body {
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+.title-page {
+  text-align: center;
+  page-break-after: always;
+}
+
+.book-title {
+  font-size: 28pt;
+  margin-top: 2in;
+  margin-bottom: 0.3in;
+}
+
+.logline {
+  font-style: italic;
+  font-size: 13pt;
+  color: #444;
+}
+
+.front-matter {
+  margin-top: 0.6in;
+  font-size: 10pt;
+  text-align: left;
+  display: inline-block;
+}
+
+.front-matter-row {
+  display: flex;
+  gap: 0.4em;
+}
+
+.front-matter dt {
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+.cover-image {
+  max-width: 4in;
+  max-height: 5in;
+  margin-top: 0.5in;
+}
+
+.chapter {
+  page-break-before: always;
+}
+
+.chapter-title {
+  font-size: 20pt;
+  text-align: center;
+  margin-bottom: 0.4in;
+}
+
+.scene-title {
+  font-size: 13pt;
+  font-weight: bold;
+  margin-top: 0.3in;
+}
+
+.scene-desc {
+  text-align: justify;
+  text-indent: 0.3in;
+  margin: 0 0 0.2in 0;
+}
+
+.page-break {
+  page-break-before: always;
+}

@@ -1,0 +1,63 @@
+{# WeasyPrint HTML template for the PDF export path (app/services/export_pdf.py).
+
+   SECURITY: this template is rendered with a Jinja2 Environment that has
+   autoescape=True (see export_pdf.py's `_render_pdf_weasyprint`) — every
+   `{{ ... }}` expression below is HTML-escaped automatically. Do NOT add a
+   `| safe` filter or otherwise disable escaping for any user-controlled
+   value (book title, logline, front_matter values, scene titles/descriptions,
+   screenplay element text). #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ doc.book_title }}</title>
+  <style>{{ css }}</style>
+</head>
+<body>
+  <section class="title-page">
+    <h1 class="book-title">{{ doc.book_title }}</h1>
+    {% if doc.logline %}
+    <p class="logline">{{ doc.logline }}</p>
+    {% endif %}
+    {% if doc.front_matter %}
+    <dl class="front-matter">
+      {% for key, value in doc.front_matter.items() %}
+      <div class="front-matter-row">
+        <dt>{{ key }}</dt>
+        <dd>{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% if cover_image_uri %}
+    <img class="cover-image" src="{{ cover_image_uri }}" alt="">
+    {% endif %}
+  </section>
+
+  {% for chapter in doc.chapters %}
+  <section class="chapter">
+    {% if chapter.title %}
+    <h2 class="chapter-title">{{ chapter.title }}</h2>
+    {% endif %}
+    {% for scene in chapter.scenes %}
+    <div class="scene">
+      <h3 class="scene-title">{{ scene.title }}</h3>
+      {% if is_script %}
+        {% for para in scene.description.split('\n\n') %}
+          {% if para.strip() %}<p class="scene-desc">{{ para }}</p>{% endif %}
+        {% endfor %}
+        {% for element in scene.elements %}
+        <p class="el el-{{ element.element_type }}">{{ element.text }}</p>
+        {% endfor %}
+      {% else %}
+        {% for para in scene.description.split('\n\n') %}
+          {% if para.strip() %}<p class="scene-desc">{{ para }}</p>{% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% if not loop.last %}<div class="page-break"></div>{% endif %}
+  {% endfor %}
+</body>
+</html>

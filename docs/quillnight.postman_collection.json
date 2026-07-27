@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Quillnight Sidecar",
-    "description": "Local API for the Quillnight sidecar (http://127.0.0.1:8756). Run the sidecar in stub mode first (see docs/API-TESTING.md). Set the collection variables (base_url is pre-filled; fill book_id/scene_id/etc. from earlier responses, or use the Swagger UI at /docs). The complete, always-current set can also be imported via Import > Link > http://127.0.0.1:8756/openapi.json .",
+    "description": "Local API for the Quillnight sidecar (http://127.0.0.1:8756). Run the sidecar in stub mode first (QUILLNIGHT_LLM_STUB=1 QUILLNIGHT_STT_STUB=1). Set the collection variables (base_url is pre-filled; fill book_id/scene_id/etc. from earlier responses, or use the Swagger UI at /docs). The complete, always-current set can also be imported via Import > Link > http://127.0.0.1:8756/openapi.json .",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

@@ -15,6 +15,7 @@ import { useBook, type BookType } from '@/queries/books'
 import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
 import { OutlinePanel } from '@/components/outline/outline-panel'
 import { ImagesPanel } from '@/components/images/images-panel'
+import { DraftPanel } from '@/components/draft/draft-panel'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import { playPageTurn, useDelight } from '@/lib/delight'
 
@@ -125,7 +126,11 @@ export function BookScreen() {
           {bookId ? <ImagesPanel bookId={bookId} /> : <EmptyPanel note="Coming in Phase 5." />}
         </TabsContent>
         <TabsContent value="draft">
-          <EmptyPanel note="Coming in Phase 6." />
+          {bookId && book ? (
+            <DraftPanel bookId={bookId} book={book} />
+          ) : (
+            <EmptyPanel note="Coming in Phase 6." />
+          )}
         </TabsContent>
       </Tabs>
     </div>

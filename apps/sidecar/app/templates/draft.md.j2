@@ -1,0 +1,29 @@
+{# Markdown renderer for a CompiledDocument (app/services/export_markdown.py) — Phase 6
+   task BE-3. All heading/heavy-formatting decisions (front-matter lines, per-book-type
+   scene body text) are already resolved in Python before this template ever sees the
+   context; this template only walks the pre-built structure and emits headings/blank-line
+   separators. The environment this is rendered with sets trim_blocks/lstrip_blocks, so a
+   `{% ... %}` tag line contributes no blank line of its own — every blank line below is
+   intentional output spacing. #}
+{% if front_matter_lines %}
+---
+{% for line in front_matter_lines %}
+{{ line }}
+{% endfor %}
+---
+
+{% endif %}
+{% for chapter in chapters %}
+{% if chapter.title %}
+## {{ chapter.title }}
+
+{% endif %}
+{% for scene in chapter.scenes %}
+{% if scene.title %}
+### {{ scene.title }}
+
+{% endif %}
+{{ scene.body }}
+
+{% endfor %}
+{% endfor %}

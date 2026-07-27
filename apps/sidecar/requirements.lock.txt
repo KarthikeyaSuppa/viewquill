@@ -34,6 +34,7 @@ jiter==0.16.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 litellm==1.91.4
+lxml==6.1.1
 Mako==1.3.12
 MarkupSafe==3.0.3
 multidict==6.7.1
@@ -48,14 +49,18 @@ pydantic-settings==2.14.2
 pydantic_core==2.46.4
 Pygments==2.20.0
 pytest==9.1.1
+python-docx==1.2.0
 python-dotenv==1.2.2
 PyYAML==6.0.3
 # Editable Git install with no remote (quillnight-sidecar==0.0.0)
 -e c:\users\2430171\downloads\initiataion\apps\sidecar
 referencing==0.37.0
 regex==2026.7.19
+reportlab==5.0.0
 requests==2.34.2
 rpds-py==2026.6.3
+ruff==0.16.0
+screenplay-tools==0.0.10
 sniffio==1.3.1
 SQLAlchemy==2.0.51
 starlette==1.3.1

@@ -1085,6 +1085,57 @@ export interface paths {
         patch: operations["update_continuity_flag_status_continuity_flags__flag_id__patch"];
         trace?: never;
     };
+    "/books/{book_id}/export/{format}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Book */
+        post: operations["export_book_books__book_id__export__format__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/draft-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Book Draft Versions */
+        get: operations["list_book_draft_versions_books__book_id__draft_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/draft-versions/{draft_version_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Draft Version */
+        get: operations["download_draft_version_draft_versions__draft_version_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1436,6 +1487,27 @@ export interface components {
             source: string | null;
             /** Created At */
             created_at: string;
+        };
+        /** DraftVersionRead */
+        DraftVersionRead: {
+            /** Id */
+            id: string;
+            /** Book Id */
+            book_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Format */
+            format: string;
+            /** Format Settings */
+            format_settings?: {
+                [key: string]: unknown;
+            } | null;
+            /** Is Current */
+            is_current: boolean;
+            /** Generated At */
+            generated_at: string;
+            /** Notes */
+            notes?: string | null;
         };
         /** EdgeCreate */
         EdgeCreate: {
@@ -4635,6 +4707,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContinuityFlagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_book_books__book_id__export__format__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+                format: "markdown" | "docx" | "pdf" | "fountain" | "fdx";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_book_draft_versions_books__book_id__draft_versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftVersionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_draft_version_draft_versions__draft_version_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

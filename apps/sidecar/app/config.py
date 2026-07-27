@@ -65,12 +65,16 @@ class Settings(BaseSettings):
         return self.data_dir / "audio"
 
     @property
+    def drafts_dir(self) -> Path:
+        return self.data_dir / "drafts"
+
+    @property
     def database_url(self) -> str:
         # forward slashes so the URL is valid on Windows too
         return f"sqlite:///{self.db_path.as_posix()}"
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.media_dir, self.audio_dir):
+        for d in (self.data_dir, self.media_dir, self.audio_dir, self.drafts_dir):
             d.mkdir(parents=True, exist_ok=True)
 
 

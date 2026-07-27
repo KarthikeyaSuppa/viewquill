@@ -587,3 +587,24 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     user: ProfilePublic
+
+
+# ── Draft versions / export (docs/03-DATA-MODEL.md `draft_versions`; docs/06 Phase 6
+# task BE-1) — a compiled export snapshot of a Book. There is no `format` column on the
+# ORM `DraftVersion` (it lives inside `format_settings` JSON, e.g. `{"format": "docx", ...}`),
+# so `from_attributes=True` alone can NOT populate this schema — callers must construct
+# `DraftVersionRead` explicitly (see app/services, not this module) pulling `format` out of
+# `row.format_settings["format"]`. ────────────────────────────────────────────────────────
+ExportFormat = Literal["markdown", "docx", "pdf", "fountain", "fdx"]
+
+
+class DraftVersionRead(BaseModel):
+    id: str
+    book_id: str
+    version_number: int
+    format: str
+    format_settings: dict | None = None
+    is_current: bool
+    generated_at: str
+    notes: str | None = None
+    model_config = ConfigDict(from_attributes=True)

@@ -22,6 +22,7 @@ from app.api import (
     chapters as chapters_api,
     codex as codex_api,
     continuity as continuity_api,
+    export as export_api,
     health,
     images as images_api,
     llm as llm_api,
@@ -93,6 +94,8 @@ def create_app() -> FastAPI:
     app.include_router(chapters_api.router)
     app.include_router(outline_api.router)
     app.include_router(continuity_api.router)
+    app.include_router(export_api.router)
+    app.include_router(export_api.draft_versions_router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:
