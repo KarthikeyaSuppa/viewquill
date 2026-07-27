@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, RectangleHorizontal, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,12 +11,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useBook, type BookType } from '@/queries/books'
 import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
 import { OutlinePanel } from '@/components/outline/outline-panel'
 import { ImagesPanel } from '@/components/images/images-panel'
 import { DraftPanel } from '@/components/draft/draft-panel'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
+import { useCardStyleStore } from '@/stores/card-style'
 import { playPageTurn, useDelight } from '@/lib/delight'
 
 const BOOK_TYPE_LABELS: Record<BookType, string> = {
@@ -47,6 +49,8 @@ export function BookScreen() {
   const [tab, setTab] = useState<BookTab>('canvas')
   const addNode = useCanvasActionsStore((s) => s.addNode)
   const addNodePending = useCanvasActionsStore((s) => s.addNodePending)
+  const cardStyle = useCardStyleStore((s) => s.cardStyle)
+  const setCardStyle = useCardStyleStore((s) => s.setCardStyle)
 
   const handleTabChange = useCallback(
     (next: string) => {
@@ -94,22 +98,55 @@ export function BookScreen() {
           </TabsList>
 
           {tab === 'canvas' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" disabled={!addNode || addNodePending}>
-                  <Plus className="size-4" />
-                  Add node
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {NODE_MENU.map(({ nodeType, label, icon: Icon }) => (
-                  <DropdownMenuItem key={nodeType} onSelect={() => addNode?.(nodeType)}>
-                    <Icon />
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={cardStyle === 'rectangle' ? 'secondary' : 'ghost'}
+                      size="icon-sm"
+                      aria-label="Rectangle card style"
+                      aria-pressed={cardStyle === 'rectangle'}
+                      onClick={() => setCardStyle('rectangle')}
+                    >
+                      <RectangleHorizontal className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Rectangle cards</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={cardStyle === 'square' ? 'secondary' : 'ghost'}
+                      size="icon-sm"
+                      aria-label="Square card style"
+                      aria-pressed={cardStyle === 'square'}
+                      onClick={() => setCardStyle('square')}
+                    >
+                      <Square className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Square cards</TooltipContent>
+                </Tooltip>
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" disabled={!addNode || addNodePending}>
+                    <Plus className="size-4" />
+                    Add node
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {NODE_MENU.map(({ nodeType, label, icon: Icon }) => (
+                    <DropdownMenuItem key={nodeType} onSelect={() => addNode?.(nodeType)}>
+                      <Icon />
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         <TabsContent value="canvas">

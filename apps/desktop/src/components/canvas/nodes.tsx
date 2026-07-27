@@ -1,15 +1,46 @@
-import type { ComponentType } from 'react'
+import { useState, type ComponentType, type MouseEvent } from 'react'
 import { Handle, Position, type Node, type NodeProps, type NodeTypes } from '@xyflow/react'
-import { Clapperboard, Image, Lightbulb, MapPinned, Sparkles } from 'lucide-react'
+import {
+  Clapperboard,
+  Copy,
+  EllipsisVertical,
+  Image,
+  Lightbulb,
+  MapPinned,
+  Sparkles,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ScreenplayNode } from '@/components/canvas/screenplay-node'
+import { useCreateNode, useRemoveFromCanvas } from '@/queries/canvas'
+import { useDeleteScene } from '@/queries/screenplay'
+import { imageThumbUrl, useEntityImages } from '@/queries/images'
+import { useCardStyleStore } from '@/stores/card-style'
+import type { NodeType } from '@/lib/api'
 
 /** Shared per-node payload — canonical Scene fields plus this canvas's link id. */
 export interface CanvasNodeData extends Record<string, unknown> {
   linkId: string
   sceneId: string
+  bookId: string
+  nodeType: NodeType
   title: string
   description: string | null
   status: string | null
@@ -37,45 +68,185 @@ interface BaseNodeConfig {
   label: string
 }
 
-function BaseNode({ data, selected }: NodeProps<SceneFlowNode>, { accentClass, icon: Icon, label }: BaseNodeConfig) {
+/** The node-card redesign (docs/10 node canvas redesign, task FE-B): a main image area
+ * (the scene's `finalized_scene`-bucket attachment if it has one, else its newest attached
+ * image, else the original dashed-border placeholder), a 3-button action row below the
+ * card (Enhance/Duplicate/⋯), and — beside the card — a vertical strip of up to 4 more
+ * attached-image thumbnails. Only Duplicate and the ⋯ trigger stop click propagation;
+ * everything else (header, image, title, description, thumbnail strip) lets the click
+ * bubble up to xyflow's `onNodeClick`, which is what opens the `NodeEditor` drawer. */
+function BaseNode(
+  { data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<SceneFlowNode>,
+  { accentClass, icon: Icon, label }: BaseNodeConfig,
+) {
+  const cardStyle = useCardStyleStore((state) => state.cardStyle)
+  const { data: images } = useEntityImages('scene', data.sceneId)
+  const createNode = useCreateNode(data.bookId)
+  const removeFromCanvas = useRemoveFromCanvas(data.bookId)
+  const deleteScene = useDeleteScene()
+  const [deleteOpen, setDeleteOpen] = useState(false)
+
+  // `useEntityImages`'s `ImageRead[]` has no per-link `role` — the closest analog for
+  // "the finalized one" is the image's own `bucket` (a scene's finalized art lives in the
+  // `finalized_scene` bucket per `SceneImagesSection`'s upload/attach flow in
+  // `node-editor.tsx`). Falls back to the newest attachment (the list is already ordered
+  // newest-first by the sidecar), then to the placeholder if nothing's attached.
+  const mainImage = images?.find((image) => image.bucket === 'finalized_scene') ?? images?.[0] ?? null
+  const thumbnails = (images ?? []).slice(0, 4)
+  const aspectClass = cardStyle === 'square' ? 'aspect-square' : 'aspect-[16/10]'
+
+  function handleDuplicate(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    createNode.mutate({
+      node_type: data.nodeType,
+      title: `${data.title} (Copy)`,
+      description: data.description,
+      canvas_x: positionAbsoluteX + 40,
+      canvas_y: positionAbsoluteY + 40,
+    })
+  }
+
+  function handleMenuTriggerClick(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+  }
+
   return (
-    <div
-      className={cn(
-        'glass glass-edge relative w-64 overflow-hidden rounded-2xl border-0 shadow-lg transition-shadow',
-        selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
-      )}
-    >
-      <NodeHandles />
-      <div className={cn('h-1.5 w-full', accentClass)} />
-      <div className="flex flex-col gap-2 p-4">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Icon className="size-3.5" />
-          {label}
-        </div>
-        <p className="line-clamp-1 text-sm font-semibold text-foreground">{data.title}</p>
-        <p className="line-clamp-2 min-h-[2lh] text-xs text-muted-foreground">
-          {data.description || 'No description yet.'}
-        </p>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div
-            className="flex size-8 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground"
-            aria-hidden
-          >
-            <Image className="size-3.5" />
+    <div className="flex items-start gap-2">
+      <div className="flex flex-col gap-2">
+        <div
+          className={cn(
+            'glass glass-edge relative w-64 overflow-hidden rounded-2xl border-0 shadow-lg transition-shadow',
+            selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+          )}
+        >
+          <NodeHandles />
+          <div className={cn('h-1.5 w-full', accentClass)} />
+          <div className="flex flex-col gap-2 p-4">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Icon className="size-3.5" />
+              {label}
+            </div>
+
+            {mainImage ? (
+              <img
+                src={imageThumbUrl(mainImage.id)}
+                alt=""
+                className={cn('w-full rounded-lg object-cover', aspectClass)}
+              />
+            ) : (
+              <div
+                className={cn(
+                  'flex w-full items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground',
+                  aspectClass,
+                )}
+                aria-hidden
+              >
+                <Image className="size-5" />
+              </div>
+            )}
+
+            <p className="line-clamp-1 text-sm font-semibold text-foreground">{data.title}</p>
+            <p className="line-clamp-2 min-h-[2lh] text-xs text-muted-foreground">
+              {data.description || 'No description yet.'}
+            </p>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between px-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span>
-                <Button variant="ghost" size="sm" disabled className="gap-1 text-xs">
-                  <Sparkles className="size-3.5" />
-                  Enhance
-                </Button>
-              </span>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <Sparkles className="size-4" />
+              </Button>
             </TooltipTrigger>
-            <TooltipContent>Enhance — coming next</TooltipContent>
+            <TooltipContent>Open to enhance</TooltipContent>
           </Tooltip>
+
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  aria-label="Duplicate"
+                  onClick={handleDuplicate}
+                  disabled={createNode.isPending}
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Duplicate</TooltipContent>
+            </Tooltip>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  aria-label="More actions"
+                  onClick={handleMenuTriggerClick}
+                >
+                  <EllipsisVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => removeFromCanvas.mutate(data.sceneId)}>
+                  Remove from canvas
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  Delete permanently
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
+
+      {thumbnails.length > 0 && (
+        <div className="flex flex-col gap-1.5 pt-1">
+          {thumbnails.map((image) => (
+            <img
+              key={image.id}
+              src={imageThumbUrl(image.id)}
+              alt=""
+              className="size-10 rounded-md object-cover transition-transform hover:scale-125"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Controlled — not nested inside the DropdownMenuItem — so the menu can close on
+          "Delete permanently" (onSelect) while this dialog opens independently, mirroring
+          `ImageCard`'s `DeleteAlert` pattern in `src/components/images/image-card.tsx`.
+          Copy/structure matches `node-editor.tsx`'s "Delete scene permanently" confirmation
+          verbatim per this task's brief. */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this scene forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the scene — its title, description, and (for
+              screenplay scenes) every element in it — everywhere it appears, including
+              every other Book it's linked to. This cannot be undone. If you only want to
+              remove it from this canvas, use “Remove from canvas” instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteScene.isPending}
+              onClick={() => {
+                deleteScene.mutate(data.sceneId, { onSuccess: () => setDeleteOpen(false) })
+              }}
+            >
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

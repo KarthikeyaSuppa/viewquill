@@ -156,7 +156,7 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
         )}
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-2 px-3 py-2.5">
           {isLoading ? (
             <p className="text-xs text-muted-foreground">Loading…</p>

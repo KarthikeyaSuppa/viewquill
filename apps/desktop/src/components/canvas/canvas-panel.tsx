@@ -7,6 +7,7 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type EdgeTypes,
@@ -18,7 +19,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import NumberFlow from '@number-flow/react'
-import { LayoutGrid, Lightbulb, MapPinned, Sparkles } from 'lucide-react'
+import { LayoutGrid, Lightbulb, Maximize, MapPinned, Minimize2, Sparkles } from 'lucide-react'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import {
   useCanvas,
@@ -35,8 +36,11 @@ import { NodeEditor } from '@/components/canvas/node-editor'
 import { CodexPanel } from '@/components/canvas/codex-panel'
 import { InkEdge } from '@/components/canvas/ink-edge'
 import { Firefly } from '@/components/firefly'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useThemeStore } from '@/stores/theme'
 import { useDelight, isFirstNodeMilestone } from '@/lib/delight'
+import { cn } from '@/lib/utils'
 
 /** All edges render as the quill-ink styled edge (docs/10 §5, `InkEdge`) — its animated
  * flow layer is itself gated on `useDelight().motionOk`, so registering it here doesn't
@@ -58,15 +62,18 @@ export const NODE_MENU: { nodeType: NodeType; label: string; icon: typeof Sparkl
 /** On script-type Books, "scene" nodes render as the structured `screenplay` variant
  * (docs/06 Phase 2 task G4); plot_point/thought nodes are unchanged. The canonical
  * server-side node_type is untouched — this is a display-only remap. */
-function toFlowNode(node: CanvasNodeDto, isScriptBook: boolean): SceneFlowNode {
+function toFlowNode(node: CanvasNodeDto, isScriptBook: boolean, bookId: string): SceneFlowNode {
   const displayType = isScriptBook && node.node_type === 'scene' ? 'screenplay' : node.node_type
   return {
     id: node.scene_id,
     type: displayType,
     position: { x: node.canvas_x ?? 0, y: node.canvas_y ?? 0 },
+    // TODO(FE-B): CanvasNodeData in nodes.tsx needs bookId/nodeType fields — added in the paired task
     data: {
       linkId: node.link_id,
       sceneId: node.scene_id,
+      bookId,
+      nodeType: node.node_type,
       title: node.title,
       description: node.description,
       status: node.status,
@@ -125,12 +132,14 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<SceneFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { fitView } = useReactFlow()
 
   // The server is the source of truth; local drag state is reconciled back into it once
   // a mutation settles and the canvas query refetches (never the other way around).
   useEffect(() => {
     if (!canvas) return
-    setNodes(canvas.nodes.map((node) => toFlowNode(node, isScriptBook)))
+    setNodes(canvas.nodes.map((node) => toFlowNode(node, isScriptBook, bookId)))
     setEdges(
       canvas.edges.map((edge) => ({
         id: edge.id,
@@ -143,7 +152,7 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         data: { connectionType: edge.connection_type },
       })),
     )
-  }, [canvas, isScriptBook, setNodes, setEdges])
+  }, [canvas, isScriptBook, bookId, setNodes, setEdges])
 
   const debouncedSavePosition = useDebouncedByKey<[string, number, number]>(
     (sceneId, canvas_x, canvas_y) => updatePosition.mutate({ sceneId, canvas_x, canvas_y }),
@@ -265,8 +274,38 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     return hasWordCounts ? sum : nodes.length
   }, [nodes])
 
+  // Toggling `isFullscreen` swaps the outer container between its normal bounded height and
+  // a `fixed inset-0` overlay (see the className below) — an abrupt resize `@xyflow/react`
+  // doesn't always pick up on its own. `fitView` is called after that resize, but the new
+  // container size isn't guaranteed to be reflected in the very next paint (the CSS class
+  // swap + browser layout needs a tick to settle), so this is wrapped in a short `setTimeout`
+  // rather than called synchronously — cleared on unmount/re-toggle so it never fires stale.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fitView({ duration: 200 })
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [isFullscreen, fitView])
+
+  // Escape exits fullscreen — only listens while fullscreen is active.
+  useEffect(() => {
+    if (!isFullscreen) return
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsFullscreen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isFullscreen])
+
   return (
-    <div className="relative mt-4 h-[70vh] min-h-[480px] overflow-hidden rounded-2xl border border-border">
+    <div
+      className={cn(
+        'overflow-hidden border-border',
+        isFullscreen
+          ? 'fixed inset-0 z-50 rounded-none border-0'
+          : 'relative mt-4 h-[70vh] min-h-[480px] rounded-2xl border',
+      )}
+    >
       <ReactFlow<SceneFlowNode, Edge>
         nodes={nodes}
         edges={edges}
@@ -290,7 +329,8 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
           style={{ top: '3.75rem', right: '1rem' }}
           className="!border-none !shadow-none [&>button]:!border-border [&>button]:!bg-card [&>button]:!text-foreground"
         />
-        {/* Controls sits below the word-count pill (right-4 top-4) via the top offset above. */}
+        {/* Controls sits below the word-count pill (right-4 top-4) via the top offset above.
+            MiniMap has no explicit position — falls back to xyflow's default bottom-right. */}
         <MiniMap
           className="!overflow-hidden !rounded-lg !border !border-border"
           maskColor="oklch(0.2 0 0 / 0.35)"
@@ -311,6 +351,23 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         {motionOk ? <NumberFlow value={totalWords} /> : <span>{totalWords}</span>}
         <span>penned</span>
       </div>
+
+      {/* Top-left corner — clear of the word-count pill and Controls (both right-side) and
+          the collapsed Codex toggle (bottom-left), so no collision risk. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            className="glass glass-edge pointer-events-auto absolute left-4 top-4 z-10"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen canvas'}
+            onClick={() => setIsFullscreen((v) => !v)}
+          >
+            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize className="size-4" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen canvas'}</TooltipContent>
+      </Tooltip>
 
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
