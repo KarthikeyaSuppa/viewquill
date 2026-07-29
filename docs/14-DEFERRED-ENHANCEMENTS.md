@@ -49,6 +49,15 @@ None block current work; pull into the phase noted when its groundwork exists.
 
 ---
 
+## B2. Periodic (timer-based) local backup rotation
+
+**What:** a during-session timer that runs `backup_service.run_rotation()` on a cadence (e.g.
+hourly), not just at startup + manual trigger. **Why deferred:** Phase 7 shipped startup +
+manual rotation, which covers the "never lose data" need for an app that restarts regularly; a
+background asyncio timer adds test surface for marginal value. docs/05 §"Additional backup safety
+net" implies a periodic cadence — this closes that gap. **Where it slots:** Phase 9 (hardening),
+alongside idle RAM/`keep_alive` perf tuning. Decision recorded 2026-07-28.
+
 ## C. Recently shipped (moved off this list)
 
 - Toolbar tidy: **Add node** relocated to the Canvas/Outline/Draft tab row; **zoom controls** moved

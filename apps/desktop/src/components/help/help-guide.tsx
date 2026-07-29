@@ -264,6 +264,26 @@ function ReadingComfortSection() {
         You can re-run the first-time Reading Comfort wizard any time from the "Re-run
         wizard" button at the top of the Reading Comfort section.
       </P>
+
+      <Separator />
+
+      <H3>Keyboard shortcuts (Draft tab)</H3>
+      <P>
+        While reading the manuscript view on the Draft tab, two single-key shortcuts help you
+        keep your place — they only work there, and never while you're typing:
+      </P>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>
+          <Badge variant="outline" className="mr-1.5 font-mono">R</Badge>
+          <strong className="text-foreground">Reading ruler</strong> — cycles through off, a
+          grey bar, and a soft shade under your current line to help you track it as you read.
+        </li>
+        <li>
+          <Badge variant="outline" className="mr-1.5 font-mono">F</Badge>
+          <strong className="text-foreground">Focus mode</strong> — dims everything except the
+          paragraph you're currently reading.
+        </li>
+      </ul>
     </div>
   )
 }

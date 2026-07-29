@@ -607,4 +607,45 @@ class DraftVersionRead(BaseModel):
     is_current: bool
     generated_at: str
     notes: str | None = None
+
+
+# ── `.quillproj` bundle export/import (docs/05-EXPORT-IMPORT-SECURITY.md; docs/06
+# Phase 7 task 4). ``passphrase`` is never logged and never persisted anywhere — it only
+# exists in-memory for the duration of one request (see app/services/bundle_crypto.py). ──
+class BundleExportRequest(BaseModel):
+    passphrase: str = Field(min_length=8)
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── Read-only manuscript preview (docs/06 Phase 8 — "manuscript reader"). Mirrors
+# ``export_service``'s ``CompiledDocument``/``CompiledChapter``/``CompiledScene``/
+# ``ScreenplayElementLike`` dataclasses field-for-field, but as its OWN Pydantic models —
+# those dataclasses are internal to the export pipeline and are never returned directly from
+# an HTTP handler (mirrors why ``DraftVersionRead`` exists separately from the ORM
+# ``DraftVersion``). This is NOT an export: no file is written, no ``draft_versions`` row is
+# created — see app/api/draft_preview.py. ───────────────────────────────────────────────────
+class ScreenplayElementPreviewOut(BaseModel):
+    element_type: str
+    text: str
+    order_index: int
+
+
+class CompiledScenePreviewOut(BaseModel):
+    title: str
+    description: str
+    elements: list[ScreenplayElementPreviewOut] = Field(default_factory=list)
+
+
+class CompiledChapterPreviewOut(BaseModel):
+    title: str | None
+    scenes: list[CompiledScenePreviewOut] = Field(default_factory=list)
+
+
+class DraftPreviewOut(BaseModel):
+    book_id: str
+    book_title: str
+    book_type: str
+    logline: str | None
+    front_matter: dict | None
+    cover_image_id: str | None
+    chapters: list[CompiledChapterPreviewOut] = Field(default_factory=list)

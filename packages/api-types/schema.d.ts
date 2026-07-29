@@ -21,6 +21,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backups/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backup */
+        post: operations["run_backup_backups_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Backups */
+        get: operations["get_backups_backups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backups/{name}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore */
+        post: operations["restore_backups__name__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles": {
         parameters: {
             query?: never;
@@ -1085,6 +1136,66 @@ export interface paths {
         patch: operations["update_continuity_flag_status_continuity_flags__flag_id__patch"];
         trace?: never;
     };
+    "/books/{book_id}/export/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Book Bundle */
+        post: operations["export_book_bundle_books__book_id__export_bundle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/quillproj/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Quillproj Bundle
+         * @description Read-only dry-run: reports what importing the posted `.quillproj` bundle WOULD do.
+         *     Never writes anything (see `bundle_import.inspect_bundle`'s docstring).
+         */
+        post: operations["inspect_quillproj_bundle_import_quillproj_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/import/quillproj/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Quillproj Bundle
+         * @description Applies the posted `.quillproj` bundle to the local database (merge-by-UUID, never a
+         *     silent overwrite — see `bundle_import.apply_import`'s docstring). Runs in one
+         *     transaction: any error below leaves the database exactly as it was.
+         */
+        post: operations["apply_quillproj_bundle_import_quillproj_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/books/{book_id}/export/{format}": {
         parameters: {
             query?: never;
@@ -1128,6 +1239,23 @@ export interface paths {
         };
         /** Download Draft Version */
         get: operations["download_draft_version_draft_versions__draft_version_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/draft-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Draft Preview */
+        get: operations["get_draft_preview_books__book_id__draft_preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1269,6 +1397,11 @@ export interface components {
             structure_template_id?: string | null;
             /** Cover Image Id */
             cover_image_id?: string | null;
+        };
+        /** BundleExportRequest */
+        BundleExportRequest: {
+            /** Passphrase */
+            passphrase: string;
         };
         /** CanvasEdge */
         CanvasEdge: {
@@ -1465,6 +1598,22 @@ export interface components {
             /** Description */
             description: string | null;
         };
+        /** CompiledChapterPreviewOut */
+        CompiledChapterPreviewOut: {
+            /** Title */
+            title: string | null;
+            /** Scenes */
+            scenes?: components["schemas"]["CompiledScenePreviewOut"][];
+        };
+        /** CompiledScenePreviewOut */
+        CompiledScenePreviewOut: {
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Elements */
+            elements?: components["schemas"]["ScreenplayElementPreviewOut"][];
+        };
         /** ContinuityFlagRead */
         ContinuityFlagRead: {
             /** Id */
@@ -1487,6 +1636,25 @@ export interface components {
             source: string | null;
             /** Created At */
             created_at: string;
+        };
+        /** DraftPreviewOut */
+        DraftPreviewOut: {
+            /** Book Id */
+            book_id: string;
+            /** Book Title */
+            book_title: string;
+            /** Book Type */
+            book_type: string;
+            /** Logline */
+            logline: string | null;
+            /** Front Matter */
+            front_matter: {
+                [key: string]: unknown;
+            } | null;
+            /** Cover Image Id */
+            cover_image_id: string | null;
+            /** Chapters */
+            chapters?: components["schemas"]["CompiledChapterPreviewOut"][];
         };
         /** DraftVersionRead */
         DraftVersionRead: {
@@ -1850,6 +2018,15 @@ export interface components {
             /** Order Index */
             order_index?: number | null;
         };
+        /** ScreenplayElementPreviewOut */
+        ScreenplayElementPreviewOut: {
+            /** Element Type */
+            element_type: string;
+            /** Text */
+            text: string;
+            /** Order Index */
+            order_index: number;
+        };
         /** ScreenplayElementRead */
         ScreenplayElementRead: {
             /** Id */
@@ -2003,6 +2180,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    run_backup_backups_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_backups_backups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    restore_backups__name__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4720,6 +4974,97 @@ export interface operations {
             };
         };
     };
+    export_book_bundle_books__book_id__export_bundle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_quillproj_bundle_import_quillproj_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    apply_quillproj_bundle_import_quillproj_apply_post: {
+        parameters: {
+            query?: {
+                /** @description JSON-encoded object mapping a conflicting row's id to 'keep_local' | 'take_imported' | 'merge'. */
+                resolutions?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_book_books__book_id__export__format__post: {
         parameters: {
             query?: never;
@@ -4801,6 +5146,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_preview_books__book_id__draft_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftPreviewOut"];
                 };
             };
             /** @description Validation Error */

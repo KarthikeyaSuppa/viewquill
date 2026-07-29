@@ -17,11 +17,36 @@ export const API_BASE = resolveBaseUrl()
 
 export class ApiError extends Error {
   readonly status: number
-  constructor(message: string, status: number) {
+  /** The server's `{ detail: "..." }` message, when the error body was JSON with one —
+   * lets callers (e.g. Phase 7's bundle export/import flows) surface the real reason
+   * (wrong passphrase, corrupt file, unsupported version) instead of a generic message. */
+  readonly detail: string | null
+  constructor(message: string, status: number, detail: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.detail = detail
   }
+}
+
+/** Best-effort extraction of FastAPI's `{ detail: string }` error body. Never throws —
+ * a non-JSON or bodyless error response just yields `null`, and the caller falls back to
+ * its generic message. Uses `res.clone()` so the original body is still readable by the
+ * caller if it wants the raw response for anything else. */
+async function extractErrorDetail(res: Response): Promise<string | null> {
+  try {
+    const body = await res.clone().json()
+    if (body && typeof body.detail === 'string') return body.detail
+  } catch {
+    // not JSON / empty body — fine, caller falls back to a generic message
+  }
+  return null
+}
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null
+  const match = /filename="?([^"]+)"?/.exec(header)
+  return match ? match[1] : null
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,7 +62,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    throw new ApiError(`${init?.method ?? 'GET'} ${path} → ${res.status}`, res.status)
+    const detail = await extractErrorDetail(res)
+    throw new ApiError(`${init?.method ?? 'GET'} ${path} → ${res.status}`, res.status, detail)
   }
   if (res.status === 204) {
     return undefined as T
@@ -52,6 +78,57 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
+  /** POSTs JSON, expects a raw binary response (`application/octet-stream`) rather than
+   * JSON — for Phase 7's encrypted `.quillproj` export, which streams back the bundle
+   * bytes directly instead of a JSON body. Returns the blob plus the filename the server
+   * chose via `Content-Disposition`, if present. */
+  postBlob: async (
+    path: string,
+    body: unknown,
+  ): Promise<{ blob: Blob; filename: string | null }> => {
+    const token = useAuthStore.getState().token
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const detail = await extractErrorDetail(res)
+      throw new ApiError(`POST ${path} → ${res.status}`, res.status, detail)
+    }
+    const blob = await res.blob()
+    const filename = filenameFromContentDisposition(res.headers.get('Content-Disposition'))
+    return { blob, filename }
+  },
+  /** POSTs a raw binary body (not JSON, not multipart) with extra headers/query params —
+   * for Phase 7's `.quillproj` import inspect/apply endpoints, which take the encrypted
+   * bundle bytes as the literal request body and the passphrase via a custom header. */
+  postRaw: async <T>(
+    path: string,
+    body: ArrayBuffer,
+    extraHeaders: Record<string, string> = {},
+    query?: Record<string, string>,
+  ): Promise<T> => {
+    const token = useAuthStore.getState().token
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : ''
+    const res = await fetch(`${API_BASE}${path}${qs}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extraHeaders,
+      },
+      body,
+    })
+    if (!res.ok) {
+      const detail = await extractErrorDetail(res)
+      throw new ApiError(`POST ${path} → ${res.status}`, res.status, detail)
+    }
+    return (await res.json()) as T
+  },
 }
 
 // ── Local profiles & auth (mirrors app/models/schemas.py Profile*/Login*; UI/profile

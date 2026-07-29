@@ -4,6 +4,7 @@ import { MotionConfig } from 'motion/react'
 import { queryClient } from '@/queries/client'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
+import { DelightAccentOverlay } from '@/lib/delight-accent'
 
 /** App-wide providers: data fetching, tooltips, toasts, motion config. Mount once at the
  * root. `reducedMotion="user"` (docs/10 §8) makes every `motion.*` component across the
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <TooltipProvider>
           {children}
           <Toaster richColors position="bottom-right" />
+          <DelightAccentOverlay />
         </TooltipProvider>
       </MotionConfig>
     </QueryClientProvider>

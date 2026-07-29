@@ -22,7 +22,7 @@ const NAV_ITEMS = [
 /** Shared base styling for every sidebar nav entry — routed `NavLink`s add their own
  * `isActive` state on top of this; the Help trigger (not a route) uses it as-is. */
 const NAV_ITEM_CLASS =
-  'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+  'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
 /**
  * App chrome (docs/10): a floating glass sidebar (wordmark, nav, theme toggle) around
@@ -52,6 +52,12 @@ export function AppShell() {
 
   return (
     <div className="relative flex min-h-screen overflow-hidden bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-xl focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-lg focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        Skip to main content
+      </a>
       <SettingsProvider />
       <ReadingComfortWizard />
 
@@ -111,7 +117,7 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto p-6">
+      <main id="main-content" tabIndex={-1} className="relative z-10 min-w-0 flex-1 overflow-y-auto p-6 outline-none">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={location.pathname}

@@ -16,6 +16,25 @@ function normalizeDelight(level: unknown): DelightLevel {
   return level === 'calm' || level === 'standard' || level === 'playful' ? level : 'playful'
 }
 
+// ── Delight accent (one-shot Lottie) pub/sub ───────────────────────────────────────────
+// `fireDelightAccent` (below) is called from the same call sites as `fireConfetti`, but
+// unlike confetti (which `canvas-confetti` renders on its own full-page canvas), the Lottie
+// accent needs a real DOM node to mount into. Rather than have every call site render its
+// own `<LottiePlayer>`, one `<DelightAccentOverlay/>` (lib/delight-accent.tsx) is mounted
+// once app-wide (in `components/providers.tsx`, alongside `<Toaster/>`) and subscribes here;
+// this Set is the only link between the two, so `fireDelightAccent` can be called from a
+// plain event handler with no overlay component in scope.
+type AccentListener = () => void
+const accentListeners = new Set<AccentListener>()
+
+/** Internal — `lib/delight-accent.tsx`'s overlay is the only intended subscriber. */
+export function subscribeDelightAccent(listener: AccentListener): () => void {
+  accentListeners.add(listener)
+  return () => {
+    accentListeners.delete(listener)
+  }
+}
+
 export interface Delight {
   level: DelightLevel
   /** False under reduced-motion OR at 'calm'. Gates view transitions, the ink-edge flow
@@ -30,6 +49,12 @@ export interface Delight {
    * milestones; 'playful' fires for all of them; 'calm' and reduced-motion never fire
    * (canvas-confetti's own `disableForReducedMotion` is a second backstop). */
   fireConfetti: (opts?: { major?: boolean }) => void
+  /** Plays a brief one-shot Lottie accent (`assets/lottie/delight-accent.json`) alongside
+   * confetti. 'playful' only — unlike `fireConfetti`, there is no `major`-only carve-out at
+   * 'standard'; 'standard' stays confetti-only per the delight plan. No-op if
+   * `<DelightAccentOverlay/>` isn't mounted (it always is, in `components/providers.tsx`),
+   * and no-op under reduced-motion/'calm' same as confetti. */
+  fireDelightAccent: () => void
 }
 
 export function useDelight(): Delight {
@@ -56,7 +81,12 @@ export function useDelight(): Delight {
       })
     }
 
-    return { level, motionOk, soundsOk, fireConfetti }
+    function fireDelightAccent() {
+      if (level !== 'playful' || !motionOk) return
+      accentListeners.forEach((listener) => listener())
+    }
+
+    return { level, motionOk, soundsOk, fireConfetti, fireDelightAccent }
   }, [level, reduceMotion, soundsEnabled])
 }
 

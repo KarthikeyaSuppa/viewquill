@@ -11,6 +11,7 @@ import { useSettings, useUpdateSettings } from '@/queries/settings'
 import { useOnboardingWizardStore } from '@/stores/onboarding'
 import { useThemeStore, type Theme } from '@/stores/theme'
 import { cn } from '@/lib/utils'
+import { LottiePlayer } from '@/lib/lottie'
 
 type ThemeMode = Theme | 'auto'
 
@@ -111,11 +112,19 @@ export function ReadingComfortWizard() {
         onInteractOutside={(e) => isFirstRun && e.preventDefault()}
         className="glass glass-edge max-w-xl gap-5 sm:max-w-xl"
       >
-        <DialogHeader>
-          <DialogTitle>Reading Comfort Wizard</DialogTitle>
-          <DialogDescription>
-            Four quick choices, applied live as you make them. Re-run this anytime from Settings.
-          </DialogDescription>
+        <DialogHeader className="flex-row items-center gap-3 space-y-0">
+          <LottiePlayer
+            animationData={() => import('@/assets/lottie/mascot-idle.json')}
+            loop
+            ariaHidden
+            className="size-12 shrink-0"
+          />
+          <div className="space-y-1.5">
+            <DialogTitle>Reading Comfort Wizard</DialogTitle>
+            <DialogDescription>
+              Four quick choices, applied live as you make them. Re-run this anytime from Settings.
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
         <div className="flex items-center gap-1.5" aria-hidden="true">

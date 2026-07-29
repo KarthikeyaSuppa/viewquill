@@ -82,7 +82,7 @@
   --popover: oklch(0.205 0.008 285);
   --popover-foreground: oklch(0.94 0.003 286);
   --primary: oklch(0.64 0.19 277);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.16 0.006 285); /* was 0.985 (near-white) — failed AA on --primary fill (3.39:1); dark text clears 4.5:1 without darkening --primary (which is also used as standalone link/accent text on --background, already AA-passing at that lightness) */
   --secondary: oklch(0.25 0.008 285);
   --secondary-foreground: oklch(0.94 0.003 286);
   --muted: oklch(0.25 0.008 285);
@@ -104,7 +104,7 @@
   --sidebar: oklch(0.19 0.007 285);
   --sidebar-foreground: oklch(0.94 0.003 286);
   --sidebar-primary: oklch(0.64 0.19 277);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.16 0.006 285); /* kept in sync with --primary-foreground fix above */
   --sidebar-accent: oklch(0.27 0.02 277);
   --sidebar-accent-foreground: oklch(0.94 0.01 286);
   --sidebar-border: oklch(1 0 0 / 0.09);
@@ -232,6 +232,16 @@
     word-spacing: calc(var(--reading-tracking) * 3.5);
     max-width: var(--reading-measure);
     text-align: left; /* never justified (docs/10 §2) */
+  }
+
+  /* Read-aloud karaoke word highlight (docs/10: "playfulness stays in UI chrome, never
+     inside manuscript text") — a flat, calm background only. No transition/animation/glow
+     on the word itself; the auto-scroll that brings it into view is the only motion, and
+     that itself is gated on `useDelight().motionOk` in read-aloud-bar.tsx. */
+  .read-aloud-highlight {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+    border-radius: 0.15em;
   }
 }
 

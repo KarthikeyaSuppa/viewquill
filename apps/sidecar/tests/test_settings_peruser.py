@@ -91,6 +91,7 @@ def test_defaults_still_present_for_a_brand_new_user(
     assert values["ai_mode"] == "offline"
     assert values["daily_word_goal"] == 500
     assert values["groq_key_present"] is False
+    assert values["focus_mode"] is False
 
 
 # ── A PER_USER key set by A is NOT seen by B ────────────────────────────────────
@@ -142,6 +143,25 @@ def test_each_user_can_set_their_own_value_for_the_same_per_user_key(
     b_resp = client.get("/settings", headers=user_b_headers)
     assert a_resp.json()["values"]["theme_mode"] == "night"
     assert b_resp.json()["values"]["theme_mode"] == "auto"
+
+
+# ── focus_mode (PER_USER boolean) round-trips per user, mirrors reading_ruler/theme_mode ──
+def test_focus_mode_round_trips_per_user(
+    client: TestClient, user_a_headers: dict[str, str], user_b_headers: dict[str, str]
+) -> None:
+    patch_resp = client.patch(
+        "/settings", json={"values": {"focus_mode": True}}, headers=user_a_headers
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["values"]["focus_mode"] is True
+
+    # A sees their own override.
+    a_resp = client.get("/settings", headers=user_a_headers)
+    assert a_resp.json()["values"]["focus_mode"] is True
+
+    # B still sees the default — A's personal override never leaked to B.
+    b_resp = client.get("/settings", headers=user_b_headers)
+    assert b_resp.json()["values"]["focus_mode"] is False
 
 
 # ── Unit level: pre-auth, user_id=None call path is unchanged ──────────────────

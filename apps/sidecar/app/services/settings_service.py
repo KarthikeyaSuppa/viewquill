@@ -38,6 +38,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "letter_spacing": 0.035,
     "line_length_ch": 65,
     "reading_ruler": "off",  # off | grey_bar | shade
+    "focus_mode": False,
     # ── delight (docs/10 §5, §8) ──
     "delight_level": "playful",  # calm | standard | playful
     "sounds_enabled": True,
@@ -68,6 +69,7 @@ PER_USER_KEYS = frozenset(
         "letter_spacing",
         "line_length_ch",
         "reading_ruler",
+        "focus_mode",
         "delight_level",
         "sounds_enabled",
         "mascot_enabled",

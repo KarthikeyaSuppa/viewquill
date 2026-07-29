@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   Background,
   Controls,
@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useThemeStore } from '@/stores/theme'
 import { useDelight, isFirstNodeMilestone } from '@/lib/delight'
+import { LottiePlayer } from '@/lib/lottie'
 import { cn } from '@/lib/utils'
 
 /** All edges render as the quill-ink styled edge (docs/10 §5, `InkEdge`) — its animated
@@ -68,6 +69,11 @@ function toFlowNode(node: CanvasNodeDto, isScriptBook: boolean, bookId: string):
     id: node.scene_id,
     type: displayType,
     position: { x: node.canvas_x ?? 0, y: node.canvas_y ?? 0 },
+    // xyflow's own node wrapper is what actually carries keyboard focus (it's natively
+    // tabIndex=0/focusable — see the keyboard-audit note on `handleCanvasKeyDown` below), so
+    // the app's standard focus-ring token (same one `button.tsx`/`input.tsx` use) is applied
+    // here via `className` rather than invented fresh for the canvas.
+    className: 'rounded-2xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
     // TODO(FE-B): CanvasNodeData in nodes.tsx needs bookId/nodeType fields — added in the paired task
     data: {
       linkId: node.link_id,
@@ -197,13 +203,32 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     setSelectedNodeId(node.id)
   }, [])
 
+  // Keyboard audit fix: every node is already natively Tab-focusable (@xyflow/react gives
+  // its `.react-flow__node` wrapper `tabIndex=0` by default — `nodesFocusable` is on unless
+  // explicitly disabled, which this canvas never does). But xyflow's *own* internal
+  // Enter/Space keydown handling only toggles its internal selection state — it never calls
+  // the `onNodeClick` prop, so Enter previously did nothing visible (no drawer opened).
+  // This listens on the canvas container (an ancestor of every node wrapper, so the keydown
+  // bubbles up to it) and opens the same `NodeEditor` a mouse click would, but only when the
+  // keydown's target is the node wrapper itself — not a descendant like the Duplicate/⋯
+  // buttons rendered inside the card, which already handle their own Enter natively.
+  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter') return
+    const target = event.target as HTMLElement
+    if (!target.classList.contains('react-flow__node')) return
+    const nodeId = target.getAttribute('data-id')
+    if (!nodeId) return
+    event.preventDefault()
+    setSelectedNodeId(nodeId)
+  }, [])
+
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
     [nodes, selectedNodeId],
   )
 
   const theme = useThemeStore((s) => s.theme)
-  const { level: delightLevel, motionOk, fireConfetti } = useDelight()
+  const { level: delightLevel, motionOk, fireConfetti, fireDelightAccent } = useDelight()
 
   const nodeCount = nodes.length
   const handleAddNode = useCallback(
@@ -217,10 +242,15 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
       })
       // The very first node created anywhere in the app, ever — a one-time milestone
       // (docs/10 §5). `isFirstNodeMilestone()` flips the localStorage flag and returns
-      // true only on that first call, so this never fires again after.
-      if (isFirstNodeMilestone()) fireConfetti({ major: true })
+      // true only on that first call, so this never fires again after. `fireDelightAccent`
+      // layers the one-shot Lottie accent on top of confetti at Playful only — Standard
+      // stays confetti-only (it no-ops itself if not 'playful').
+      if (isFirstNodeMilestone()) {
+        fireConfetti({ major: true })
+        fireDelightAccent()
+      }
     },
-    [createNode, nodeCount, fireConfetti],
+    [createNode, nodeCount, fireConfetti, fireDelightAccent],
   )
 
   // Bridges `handleAddNode` out to the book-screen tab row, which renders the "Add node"
@@ -305,6 +335,7 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
           ? 'fixed inset-0 z-50 rounded-none border-0'
           : 'relative mt-4 h-[70vh] min-h-[480px] rounded-2xl border',
       )}
+      onKeyDown={handleCanvasKeyDown}
     >
       <ReactFlow<SceneFlowNode, Edge>
         nodes={nodes}
@@ -372,6 +403,12 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="glass glass-edge pointer-events-none flex flex-col items-center gap-1 rounded-2xl px-8 py-10 text-center">
+            <LottiePlayer
+              animationData={() => import('../../assets/lottie/empty-state.json')}
+              loop
+              ariaHidden
+              className="size-28"
+            />
             <p className="text-sm font-medium">Blank canvas — add your first node</p>
             <p className="max-w-xs text-xs text-muted-foreground">
               Scenes, plot points, and loose thoughts all start from the “Add node” button in

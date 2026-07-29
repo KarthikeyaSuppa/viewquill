@@ -22,12 +22,16 @@ dependencies = [
     # Windows build laptop (`import weasyprint` fails with OSError: cannot load
     # 'libgobject-2.0-0'). Falling back to reportlab, which is pure-Python + Pillow only.
     "reportlab==5.0.0",
+    # Phase 7 (.quillproj) bundle encryption: AES-256-GCM (cryptography) keyed by Argon2id
+    # (argon2-cffi, already above). `pyrage` was the roadmap default but is a single-maintainer
+    # native wheel; cryptography is the most-audited, widely-available option and installed
+    # cleanly here — same posture as the WeasyPrint→ReportLab decision in Phase 6. See docs/05.
+    "cryptography==46.0.3",
 ]
 
 # Deferred to their roadmap phases so this install stays model-free
 # (docs/06). Added when their phase begins — NOT installed on the restrictive build laptop:
 #   Phase 2  voice STT: onnx-asr[cpu,hub], sounddevice, silero-vad
-#   Phase 7  security:  pyrage
 #   Phase 10 semantic:  sqlite-vec
 
 [tool.ruff]

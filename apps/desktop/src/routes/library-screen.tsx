@@ -49,6 +49,7 @@ import {
   type Book,
   type BookType,
 } from '@/queries/books'
+import { LottiePlayer } from '@/lib/lottie'
 
 const BOOK_TYPES: { value: BookType; label: string }[] = [
   { value: 'story_book', label: 'Story Book' },
@@ -133,6 +134,12 @@ export function LibraryScreen() {
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="glass glass-edge flex flex-col items-center gap-3 rounded-2xl px-8 py-16 text-center">
+      <LottiePlayer
+        animationData={() => import('../assets/lottie/empty-state.json')}
+        loop
+        ariaHidden
+        className="size-32"
+      />
       <p className="text-base font-medium">No books yet — start your first story.</p>
       <p className="max-w-sm text-sm text-muted-foreground">
         Story books, scripts, and scenes all begin the same way: with a title.

@@ -17,14 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api import (
     auth as auth_api,
+    backups as backups_api,
     books as books_api,
     canvas as canvas_api,
     chapters as chapters_api,
     codex as codex_api,
     continuity as continuity_api,
+    draft_preview as draft_preview_api,
     export as export_api,
     health,
     images as images_api,
+    import_export as import_export_api,
     llm as llm_api,
     outline as outline_api,
     profiles as profiles_api,
@@ -36,6 +39,7 @@ from app.api import (
 from app.config import get_settings
 from app.db.base import SessionLocal
 from app.db.migrate import run_migrations
+from app.services import backup_service
 from app.services.ollama_health import check_ollama
 from app.services.structure_templates import seed_structure_templates
 
@@ -60,6 +64,11 @@ async def lifespan(app: FastAPI):
         logger.exception("Structure template seeding failed; continuing without it.")
     probe = check_ollama()
     logger.info("Ollama %s (%s)", "reachable" if probe.reachable else "unreachable", probe.detail)
+    try:
+        snapshot = backup_service.run_rotation()
+        logger.info("Backup rotation complete: %s", snapshot)
+    except Exception:  # noqa: BLE001 — a failed backup must never block startup
+        logger.exception("Backup rotation failed; continuing without it.")
     yield
     logger.info("Quillnight sidecar shutting down.")
 
@@ -79,6 +88,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    app.include_router(backups_api.router)
     app.include_router(profiles_api.router)
     app.include_router(auth_api.router)
     app.include_router(settings_api.router)
@@ -94,8 +104,14 @@ def create_app() -> FastAPI:
     app.include_router(chapters_api.router)
     app.include_router(outline_api.router)
     app.include_router(continuity_api.router)
+    # Registered before export_api.router: FastAPI matches routes in registration order,
+    # and export_api's `/{book_id}/export/{format}` path pattern would otherwise shadow
+    # `/{book_id}/export/bundle` (both match the same path shape) and fail format
+    # validation with a 422 before this router ever gets a chance to handle it.
+    app.include_router(import_export_api.router)
     app.include_router(export_api.router)
     app.include_router(export_api.draft_versions_router)
+    app.include_router(draft_preview_api.router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:

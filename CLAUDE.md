@@ -1,5 +1,7 @@
 # Quillnight — Build Instructions for Claude Code
 
+@PROJECT-MAP.md
+
 Read `docs/` (all 12 spec files) before touching any phase. Follow the roadmap
 in `06-ROADMAP.md` phase-by-phase — never skip ahead, never start a phase
 whose previous phase's demo hasn't been confirmed working.

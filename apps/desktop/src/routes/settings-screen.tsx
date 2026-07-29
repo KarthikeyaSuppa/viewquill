@@ -17,14 +17,25 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { ReadingControls, type ReadingControlsValue } from '@/components/reading-controls'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import * as keyring from '@/lib/keyring'
-import { READING_DEFAULTS, type DelightLevel } from '@/lib/apply-settings'
+import { getLocalVoices } from '@/lib/speech'
+import { BG_TINTS, READING_DEFAULTS, type DelightLevel } from '@/lib/apply-settings'
 import { useSettings, useUpdateSettings } from '@/queries/settings'
 import { useOnboardingWizardStore } from '@/stores/onboarding'
 import { cn } from '@/lib/utils'
 
 type ThemeMode = 'day' | 'night' | 'auto'
 type AiMode = 'offline' | 'online' | 'hybrid'
+type BgTint = keyof typeof BG_TINTS
+
+const BG_TINT_OPTIONS: { value: BgTint; label: string }[] = [
+  { value: 'cream', label: 'Cream' },
+  { value: 'sand', label: 'Sand' },
+  { value: 'peach', label: 'Peach' },
+  { value: 'apricot', label: 'Apricot' },
+]
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: 'day', label: 'Day' },
@@ -73,6 +84,24 @@ export function SettingsScreen() {
   const [testBusy, setTestBusy] = useState(false)
   const [disclosurePendingMode, setDisclosurePendingMode] = useState<AiMode | null>(null)
 
+  // Voice section (docs/12): local-only read-aloud voices, per the hard rule enforced in
+  // lib/speech.ts — never fetched from any other API, never falls back to a remote voice.
+  const [localVoices, setLocalVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [voicesLoaded, setVoicesLoaded] = useState(false)
+  const [ttsRateDraft, setTtsRateDraft] = useState(1.0)
+
+  useEffect(() => {
+    let cancelled = false
+    void getLocalVoices().then((voices) => {
+      if (cancelled) return
+      setLocalVoices(voices)
+      setVoicesLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Re-seed local draft whenever fresh settings land (initial load, or after a PATCH elsewhere).
   useEffect(() => {
     if (!values) return
@@ -93,12 +122,24 @@ export function SettingsScreen() {
     setGroqModelDraft(typeof values.groq_model_name === 'string' ? values.groq_model_name : '')
   }, [values])
 
+  useEffect(() => {
+    if (!values) return
+    setTtsRateDraft(typeof values.tts_rate === 'number' ? values.tts_rate : 1.0)
+  }, [values])
+
   const themeMode: ThemeMode =
     values?.theme_mode === 'day' || values?.theme_mode === 'night' || values?.theme_mode === 'auto'
       ? values.theme_mode
       : 'night'
   const delightLevel: DelightLevel =
     values?.delight_level === 'calm' || values?.delight_level === 'standard' ? values.delight_level : 'playful'
+  const bgTint: BgTint =
+    values?.bg_tint === 'cream' ||
+    values?.bg_tint === 'sand' ||
+    values?.bg_tint === 'peach' ||
+    values?.bg_tint === 'apricot'
+      ? values.bg_tint
+      : 'cream'
 
   const aiMode: AiMode =
     values?.ai_mode === 'online' || values?.ai_mode === 'hybrid' ? values.ai_mode : 'offline'
@@ -107,6 +148,8 @@ export function SettingsScreen() {
   // Tracked as a plain setting (not localStorage) so the one-time disclosure survives a
   // reinstall the same way every other preference does — see docs/08 "Privacy & consent".
   const cloudDisclosureAck = values?.cloud_disclosure_ack === true
+
+  const ttsVoice = typeof values?.tts_voice === 'string' ? values.tts_voice : null
 
   function handleAiModeChange(next: AiMode) {
     if (next !== 'offline' && !cloudDisclosureAck) {
@@ -207,6 +250,79 @@ export function SettingsScreen() {
           onChange={setReading}
           onCommit={(next) => updateSettings.mutate({ ...next })}
         />
+
+        <div className="space-y-1.5">
+          <Label>Background tint</Label>
+          <div className="flex flex-wrap gap-2">
+            {BG_TINT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-label={opt.label}
+                aria-pressed={bgTint === opt.value}
+                title={opt.label}
+                onClick={() => updateSettings.mutate({ bg_tint: opt.value })}
+                className={cn(
+                  'size-8 rounded-full border border-border transition-shadow',
+                  bgTint === opt.value && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+                )}
+                style={{ backgroundColor: BG_TINTS[opt.value].day }}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="glass glass-edge space-y-4 rounded-2xl p-5">
+        <div>
+          <h2 className="text-base font-medium">Voice</h2>
+          <p className="text-sm text-muted-foreground">
+            Read-aloud voice and speaking rate (docs/12). Only voices that run entirely on this
+            device are ever offered — manuscript text is never sent anywhere to be spoken.
+          </p>
+        </div>
+
+        {voicesLoaded && localVoices.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No local voices installed on this device — read-aloud will be disabled.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="settings-tts-voice">Voice</Label>
+            <Select
+              value={ttsVoice ?? undefined}
+              onValueChange={(next) => updateSettings.mutate({ tts_voice: next })}
+              disabled={!voicesLoaded}
+            >
+              <SelectTrigger id="settings-tts-voice" className="w-full">
+                <SelectValue placeholder={voicesLoaded ? 'Choose a voice' : 'Loading voices…'} />
+              </SelectTrigger>
+              <SelectContent>
+                {localVoices.map((voice) => (
+                  <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
+                    {voice.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="settings-tts-rate">Speaking rate</Label>
+            <span className="text-sm text-muted-foreground tabular-nums">{ttsRateDraft.toFixed(1)}x</span>
+          </div>
+          <Slider
+            id="settings-tts-rate"
+            value={[ttsRateDraft]}
+            min={0.5}
+            max={2}
+            step={0.1}
+            onValueChange={([next]) => setTtsRateDraft(next)}
+            onValueCommit={([next]) => updateSettings.mutate({ tts_rate: next })}
+          />
+        </div>
       </section>
 
       <section className="glass glass-edge space-y-3 rounded-2xl p-5">

@@ -48,7 +48,7 @@ export function EnhanceDiff({
 }: EnhanceDiffProps) {
   const [editing, setEditing] = useState(false)
   const [editedText, setEditedText] = useState(enhanced)
-  const { soundsOk } = useDelight()
+  const { soundsOk, fireConfetti, fireDelightAccent } = useDelight()
 
   const parts = useMemo(() => diffWordsWithSpace(original, enhanced), [original, enhanced])
 
@@ -73,6 +73,10 @@ export function EnhanceDiff({
 
   function handleAccept() {
     if (soundsOk) playChime()
+    // Not a `major` milestone — 'standard' stays confetti-only-for-major, so this only
+    // actually fires at 'playful' (same tier `fireDelightAccent` requires).
+    fireConfetti()
+    fireDelightAccent()
     onAccept(editing ? editedText : enhanced)
   }
 

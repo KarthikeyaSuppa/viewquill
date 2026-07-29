@@ -50,6 +50,25 @@ export function applyReadingVars(values: ReadingValues): void {
   root.setProperty('--reading-measure', `${lineLength}ch`)
 }
 
+/**
+ * Warm background-tint presets for the manuscript reading surface (docs/10 §1). Day values
+ * are subtle variations close to the evidence-tuned cream base (`#fbf5e9`); Night values stay
+ * at (or almost exactly at) the existing Night base (`#1e1e24`) — warmth is a Day-only
+ * affordance, Night is never lightened.
+ */
+export const BG_TINTS: Record<'cream' | 'sand' | 'peach' | 'apricot', { day: string; night: string }> = {
+  cream: { day: '#fbf5e9', night: '#1e1e24' },
+  sand: { day: '#f7f0e0', night: '#1e1e24' },
+  peach: { day: '#fbebe0', night: '#1f1e23' },
+  apricot: { day: '#fce8d8', night: '#201e23' },
+}
+
+/** Overwrites `--manuscript-bg` (index.css `.manuscript`) from the `bg_tint` + resolved theme. */
+export function applyBgTint(value: unknown, theme: 'day' | 'night'): void {
+  const key = value === 'cream' || value === 'sand' || value === 'peach' || value === 'apricot' ? value : 'cream'
+  document.documentElement.style.setProperty('--manuscript-bg', BG_TINTS[key][theme])
+}
+
 /** 'auto' resolves to Night between 18:00–05:59 local time, Day otherwise (docs/10 §1). */
 export function resolveTheme(themeMode: unknown): Theme {
   if (themeMode === 'day' || themeMode === 'night') return themeMode
