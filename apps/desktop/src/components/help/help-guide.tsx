@@ -480,9 +480,14 @@ export function HelpGuide({
         </DialogHeader>
 
         <Tabs defaultValue="start" className="min-h-0 flex-1">
-          <TabsList className="w-full flex-wrap justify-start gap-1 bg-transparent p-0">
+          <TabsList
+            className={cn(
+              'w-full flex-nowrap justify-start gap-1 overflow-x-auto bg-transparent p-0',
+              '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5',
+            )}
+          >
             {SECTIONS.map(({ id, label, icon: Icon }) => (
-              <TabsTrigger key={id} value={id} className="gap-1.5">
+              <TabsTrigger key={id} value={id} className="shrink-0 gap-1.5">
                 <Icon className="size-3.5" />
                 {label}
               </TabsTrigger>
