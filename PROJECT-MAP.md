@@ -53,7 +53,7 @@ Per `docs/06-ROADMAP.md` and the root `PHASE*.md` working directives:
 | 6 | Final Draft tab + export pipeline | Done. PDF engine resolved 2026-07-27: WeasyPrint failed to import (`OSError: cannot load library 'libgobject-2.0-0'`, no GTK runtime here); **ReportLab 5.0.0** is the active engine, isolated behind one `render_pdf(html, css) -> bytes` interface so WeasyPrint can be reactivated on the ASUS TUF F15 later |
 | **7** | **`.quillproj` export/import** | **Done (2026-07-28)** — encrypted per-Book bundle export + merge-by-UUID import (never silent overwrite; keep-local/replace/merge resolution) + rotating local DB backups. **Encryption engine resolved:** `pyrage` (roadmap default, single-maintainer native wheel) dropped for **`cryptography` 46.0.3 AES-256-GCM + `argon2-cffi` Argon2id**, isolated behind `encrypt_bundle/decrypt_bundle` (same posture as Ph6's ReportLab swap). Opus reviewer gate passed (no MUST-FIX). See `PHASE7.md` |
 | **8** | **Accessibility deep pass + reading aids + Lottie overhaul** | **Done (2026-07-28)** — scope changed mid-planning: streaks/daily-word-goal gamification **cut entirely**, replaced with a Lottie animation overhaul. Kept: WCAG AA audit, reading ruler, focus mode, read-aloud karaoke. See `PHASE8.md` §3 for the full shipped list |
-| **9** | **Hardening + installer** | **Current / next** — also picks up items deliberately deferred out of Phase 8: true periodic backup timer (Phase 7 shipped startup+manual-trigger only, docs/14 §B2), canvas templates + keyboard-first node creation (docs/14, tagged "Phase 8" but pushed out to protect budget) |
+| **9** | **Hardening + installer** | **Done for this-machine-buildable scope (2026-07-30)** — periodic backup timer + nudge UI, canvas templates (three-act/hero's journey), keyboard-first node+edge creation, `pip-audit`/`npm audit` clean pass (bumped `cryptography` 46.0.3→48.0.1 for 4 CVEs), configurable `ollama_keep_alive`. Installer/Tauri-bundling half (MSI/NSIS, Ollama bundling, `cargo audit`, onboarding disk-space/model-pull, the clean-install demo) explicitly deferred to the ASUS TUF F15 — no Tauri shell/Rust/Ollama exist on this machine. See `PHASE9.md` |
 | 10–11 (v1.1) | Semantic/RAG layer, full delight/voice polish | Not started |
 | 12 (v2.0) | Backlog | Not started |
 
@@ -75,9 +75,10 @@ initiataion/
 ├── scripts/             Dev/audit/usage-tracking scripts (not part of the app itself)
 ├── ccusage-log/         Claude Code usage tracking output (unrelated to Quillnight product)
 ├── CLAUDE.md            Subagent/model routing rules + per-phase workflow
-├── PHASE3.md … PHASE7.md  Current + recent phase working directives
+├── PHASE3.md … PHASE9.md  Current + recent phase working directives
 ├── PROJECT-MAP.md       This file
 ├── API-REFERENCE.md     Every user option + backend endpoint, user-friendly vs developer detail
+├── HANDOFF-ASUS-TUF.md  What's left for the target machine (Tauri/Ollama/model-dependent work) — read this on the ASUS TUF F15 before starting Phase 9's deferred half or Phase 10+
 └── README.md            Stale — predates real code, says "no code written yet" (it has been)
 ```
 

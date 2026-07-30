@@ -214,6 +214,13 @@ class LinkUpdate(BaseModel):
     color: str | None = None
 
 
+class ApplyCanvasTemplateRequest(BaseModel):
+    """Seed a Book's (blank) canvas with a starter template — see
+    ``services/canvas_template_service.py`` for the available ``template_key``s."""
+
+    template_key: str
+
+
 class EdgeCreate(BaseModel):
     source_scene_id: str
     target_scene_id: str

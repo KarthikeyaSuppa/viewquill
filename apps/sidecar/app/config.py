@@ -52,6 +52,21 @@ class Settings(BaseSettings):
     default_embedding_model: str = "qwen3-embedding:0.6b"
     ollama_base_url: str = "http://127.0.0.1:11434"
 
+    # ── backups ───────────────────────────────────────────────────
+    # Cadence for the during-session periodic backup timer (app/main.py's lifespan),
+    # on top of the startup + manual-trigger rotation (docs/14-DEFERRED-ENHANCEMENTS.md
+    # §B2). The loop itself floors this at 5 minutes regardless of what's configured here,
+    # so a misconfigured value can't hammer the DB with back-to-back VACUUM INTO calls.
+    backup_interval_minutes: int = 60
+
+    # ── LLM / model runtime ──────────────────────────────────────────
+    # How long Ollama keeps a model resident in RAM after the last request before
+    # unloading it (Ollama's own `keep_alive` semantics — a Go duration string like "5m",
+    # "1h", "0" to unload immediately, or "-1" to never unload). Threaded into the
+    # Ollama-leg LiteLLM call only (services/llm_orchestrator.py); Groq is a hosted API
+    # with no local model residency to manage, so this has no effect on that leg.
+    ollama_keep_alive: str = "5m"
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "quillnight.sqlite"

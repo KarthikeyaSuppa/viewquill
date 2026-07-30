@@ -26,7 +26,9 @@ dependencies = [
     # (argon2-cffi, already above). `pyrage` was the roadmap default but is a single-maintainer
     # native wheel; cryptography is the most-audited, widely-available option and installed
     # cleanly here — same posture as the WeasyPrint→ReportLab decision in Phase 6. See docs/05.
-    "cryptography==46.0.3",
+    # Bumped 2026-07-30 (Phase 9 pip-audit pass): 46.0.3 had 4 known advisories
+    # (PYSEC-2026-35/36/2141, GHSA-537c-gmf6-5ccf); 48.0.1 is pip-audit's fix version for all four.
+    "cryptography==48.0.1",
 ]
 
 # Deferred to their roadmap phases so this install stays model-free

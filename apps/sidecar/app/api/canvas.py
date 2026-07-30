@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import get_db
 from app.models.schemas import (
+    ApplyCanvasTemplateRequest,
     CanvasEdge,
     CanvasNode,
     CanvasResponse,
@@ -24,7 +25,7 @@ from app.models.schemas import (
     LinkUpdate,
     SceneRead,
 )
-from app.services import book_service, canvas_service, scene_service
+from app.services import book_service, canvas_service, canvas_template_service, scene_service
 
 router = APIRouter(tags=["canvas"])
 
@@ -46,6 +47,19 @@ def _require_scene(db: Session, scene_id: str) -> None:
 def get_canvas(book_id: str, db: Session = Depends(get_db)) -> CanvasResponse:
     _require_book(db, book_id)
     return canvas_service.get_canvas(db, book_id)
+
+
+@router.post("/books/{book_id}/canvas/apply-template", response_model=CanvasResponse)
+def apply_canvas_template(
+    book_id: str, payload: ApplyCanvasTemplateRequest, db: Session = Depends(get_db)
+) -> CanvasResponse:
+    _require_book(db, book_id)
+    try:
+        return canvas_template_service.apply_template(db, book_id, payload.template_key)
+    except canvas_template_service.UnknownCanvasTemplateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except canvas_template_service.TemplateAlreadyAppliedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(

@@ -19,7 +19,8 @@ recoverable from another backup.
 from __future__ import annotations
 
 import shutil
-from datetime import UTC, datetime
+import threading
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -28,6 +29,18 @@ from app.config import get_settings
 
 _PREFIX = "quillnight-"
 _SUFFIX = ".sqlite"
+
+# Serializes run_rotation()'s body between call sites: the periodic timer (app/main.py,
+# via asyncio.to_thread) and the manual "run now" endpoint (api/backups.py, via FastAPI's
+# threadpool) are both real OS threads, not coroutines on the same event loop, so an
+# asyncio.Lock would not help here -- only a threading.Lock actually excludes them from
+# each other. Without this, two rotations landing in the same microsecond tick could pick
+# an identical snapshot filename and have VACUUM INTO raise (the filename is otherwise
+# only as unique as the clock's resolution -- see _timestamp below). Scoped to just the
+# snapshot+trim body, not the module -- list_backups/backup_status/restore_backup's own
+# reads/writes are unaffected (restore_backup's internal run_rotation call still goes
+# through this same lock, it's just not held for restore's copy/dispose work).
+_rotation_lock = threading.Lock()
 
 
 class BackupError(Exception):
@@ -62,22 +75,23 @@ def run_rotation(keep: int = 7, now: datetime | None = None) -> str:
 
     Returns the new snapshot's absolute path as a string.
     """
-    cfg = get_settings()
-    backups_dir = _backups_dir()
-    snapshot_path = backups_dir / f"{_PREFIX}{_timestamp(now)}{_SUFFIX}"
+    with _rotation_lock:
+        cfg = get_settings()
+        backups_dir = _backups_dir()
+        snapshot_path = backups_dir / f"{_PREFIX}{_timestamp(now)}{_SUFFIX}"
 
-    engine = create_engine(cfg.database_url, connect_args={"check_same_thread": False})
-    try:
-        conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        engine = create_engine(cfg.database_url, connect_args={"check_same_thread": False})
         try:
-            conn.exec_driver_sql(f"VACUUM INTO '{snapshot_path.as_posix()}'")
+            conn = engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+            try:
+                conn.exec_driver_sql(f"VACUUM INTO '{snapshot_path.as_posix()}'")
+            finally:
+                conn.close()
         finally:
-            conn.close()
-    finally:
-        engine.dispose()
+            engine.dispose()
 
-    _trim(backups_dir, keep)
-    return str(snapshot_path)
+        _trim(backups_dir, keep)
+        return str(snapshot_path)
 
 
 def list_backups() -> list[dict]:
@@ -97,6 +111,28 @@ def list_backups() -> list[dict]:
             }
         )
     return out
+
+
+def backup_status() -> dict:
+    """Read-only ``{last_backup_at, next_backup_at}`` for a frontend backup-staleness nudge
+    (Phase 9 task 2, docs/14-DEFERRED-ENHANCEMENTS.md §B2).
+
+    Never touches rotation/restore state -- purely derived from whatever's already on disk
+    (``list_backups``, newest-first) plus the configured ``backup_interval_minutes``. Both
+    fields are ``None`` when no backup has ever run yet (e.g. a brand-new install before
+    startup's first rotation completes).
+    """
+    backups = list_backups()
+    if not backups:
+        return {"last_backup_at": None, "next_backup_at": None}
+
+    last_backup_at = backups[0]["created_at"]
+    interval_minutes = get_settings().backup_interval_minutes
+    last_dt = datetime.fromisoformat(last_backup_at)
+    next_backup_at = (last_dt + timedelta(minutes=interval_minutes)).isoformat(
+        timespec="seconds"
+    )
+    return {"last_backup_at": last_backup_at, "next_backup_at": next_backup_at}
 
 
 def restore_backup(name: str) -> None:

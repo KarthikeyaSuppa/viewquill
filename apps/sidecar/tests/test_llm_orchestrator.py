@@ -178,6 +178,49 @@ async def test_offline_never_attempts_groq_even_with_a_key(anyio_backend):
 # ── 4. Groq key is never sourced from the DB/settings — code-structure check ─────────────
 
 
+# ── 5. `ollama_keep_alive` setting reaches the Ollama-leg LiteLLM call ────────────────────
+
+
+@pytest.mark.anyio
+async def test_ollama_leg_passes_configured_keep_alive_to_litellm(anyio_backend, monkeypatch):
+    """Proves app.config.Settings.ollama_keep_alive is threaded into the real
+    ProviderClient's Ollama-leg `litellm.acompletion(...)` call (Phase 9 task 11), without
+    ever making a real network/model call — `litellm.acompletion` itself is monkeypatched
+    to a no-network fake that just records the kwargs it was called with."""
+    from app.config import get_settings
+    from app.services import llm_orchestrator as orch_module
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("QUILLNIGHT_OLLAMA_KEEP_ALIVE", "42m")
+
+    captured_kwargs: dict = {}
+
+    class _FakeResponse:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+        async def aclose(self):
+            pass
+
+    async def fake_acompletion(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(orch_module.litellm, "acompletion", fake_acompletion)
+
+    client = ProviderClient()
+    messages = [{"role": "user", "content": "irrelevant"}]
+    chunks = await _collect(client.stream(messages, ai_mode="offline"))
+
+    assert chunks == []
+    assert captured_kwargs.get("keep_alive") == "42m"
+
+    get_settings.cache_clear()
+
+
 def test_module_never_imports_db_session_or_settings_table_for_the_key():
     """The Groq key must only ever arrive via the `groq_key` function parameter (sourced
     by the caller from the OS keyring via the Rust shell). This module must have no

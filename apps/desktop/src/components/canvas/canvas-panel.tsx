@@ -19,7 +19,16 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import NumberFlow from '@number-flow/react'
-import { LayoutGrid, Lightbulb, Maximize, MapPinned, Minimize2, Sparkles } from 'lucide-react'
+import {
+  Compass,
+  LayoutGrid,
+  LayoutTemplate,
+  Lightbulb,
+  Maximize,
+  MapPinned,
+  Minimize2,
+  Sparkles,
+} from 'lucide-react'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import {
   useCanvas,
@@ -29,6 +38,7 @@ import {
   useRemoveFromCanvas,
   useUpdateNodePosition,
 } from '@/queries/canvas'
+import { useApplyCanvasTemplate, type CanvasTemplateKey } from '@/queries/canvas-templates'
 import { useBook } from '@/queries/books'
 import type { CanvasNode as CanvasNodeDto, NodeType } from '@/lib/api'
 import { nodeTypes, type CanvasNodeData, type SceneFlowNode } from '@/components/canvas/nodes'
@@ -58,6 +68,13 @@ export const NODE_MENU: { nodeType: NodeType; label: string; icon: typeof Sparkl
   { nodeType: 'scene', label: 'Scene', icon: LayoutGrid },
   { nodeType: 'plot_point', label: 'Plot Point', icon: MapPinned },
   { nodeType: 'thought', label: 'Thought', icon: Lightbulb },
+]
+
+/** The empty-canvas "start from a template" entry point (docs/06 Phase 9 task 5). Keys must
+ * match `app/services/canvas_template_service.py`'s `CANVAS_TEMPLATES`/`TEMPLATE_LABELS`. */
+const CANVAS_TEMPLATE_MENU: { key: CanvasTemplateKey; label: string; icon: typeof Sparkles }[] = [
+  { key: 'three_act', label: 'Three-Act Structure', icon: LayoutTemplate },
+  { key: 'heros_journey', label: "Hero's Journey", icon: Compass },
 ]
 
 /** On script-type Books, "scene" nodes render as the structured `screenplay` variant
@@ -134,12 +151,28 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const removeFromCanvas = useRemoveFromCanvas(bookId)
   const createEdge = useCreateEdge(bookId)
   const deleteEdge = useDeleteEdge(bookId)
+  const applyTemplate = useApplyCanvasTemplate(bookId)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<SceneFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { fitView } = useReactFlow()
+
+  // Keyboard-first node creation (docs/06 Phase 9 task 6, docs/14 §B "Keyboard-first node
+  // creation"). Set by `handleAddNodeWithFocus` once the create mutation resolves with the
+  // new node's id; the effect further below moves DOM focus to it as soon as it's actually
+  // present in `nodes` (the canvas query has to refetch and re-render first).
+  const [pendingFocusNodeId, setPendingFocusNodeId] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Keyboard-driven edge creation (docs/06 Phase 9 task 7 — "the genuine missing a11y
+  // capability", docs/14 §B). `connectSourceId` is the node id connect-mode was started from;
+  // non-null means connect-mode is active. `connectAnnouncement` feeds the aria-live region
+  // below so a sighted-or-not keyboard user gets the same state changes a mouse user sees
+  // implicitly (a dragged connection line).
+  const [connectSourceId, setConnectSourceId] = useState<string | null>(null)
+  const [connectAnnouncement, setConnectAnnouncement] = useState('')
 
   // The server is the source of truth; local drag state is reconciled back into it once
   // a mutation settles and the canvas query refetches (never the other way around).
@@ -203,24 +236,28 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     setSelectedNodeId(node.id)
   }, [])
 
-  // Keyboard audit fix: every node is already natively Tab-focusable (@xyflow/react gives
-  // its `.react-flow__node` wrapper `tabIndex=0` by default — `nodesFocusable` is on unless
-  // explicitly disabled, which this canvas never does). But xyflow's *own* internal
-  // Enter/Space keydown handling only toggles its internal selection state — it never calls
-  // the `onNodeClick` prop, so Enter previously did nothing visible (no drawer opened).
-  // This listens on the canvas container (an ancestor of every node wrapper, so the keydown
-  // bubbles up to it) and opens the same `NodeEditor` a mouse click would, but only when the
-  // keydown's target is the node wrapper itself — not a descendant like the Duplicate/⋯
-  // buttons rendered inside the card, which already handle their own Enter natively.
-  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter') return
-    const target = event.target as HTMLElement
-    if (!target.classList.contains('react-flow__node')) return
-    const nodeId = target.getAttribute('data-id')
-    if (!nodeId) return
-    event.preventDefault()
-    setSelectedNodeId(nodeId)
-  }, [])
+  // A node's display title, for the connect-mode aria-live announcements below.
+  const nodeTitleById = useCallback(
+    (nodeId: string) => nodes.find((node) => node.id === nodeId)?.data.title ?? 'node',
+    [nodes],
+  )
+
+  // Confirms a keyboard-driven connection (docs/06 Phase 9 task 7): creates an edge through
+  // the exact same mutation the mouse drag-to-connect flow uses (`handleConnect` above), since
+  // a flow node's `id` is already the canonical `scene_id` (see `toFlowNode`). A same-node
+  // "confirm" (nothing was Tabbed to in between) is a no-op — connect-mode stays active rather
+  // than silently failing or creating a self-edge.
+  const confirmConnection = useCallback(
+    (targetNodeId: string | null) => {
+      if (!connectSourceId || !targetNodeId || targetNodeId === connectSourceId) return
+      createEdge.mutate({ source_scene_id: connectSourceId, target_scene_id: targetNodeId })
+      setConnectAnnouncement(
+        `Connected ${nodeTitleById(connectSourceId)} to ${nodeTitleById(targetNodeId)}.`,
+      )
+      setConnectSourceId(null)
+    },
+    [connectSourceId, createEdge, nodeTitleById],
+  )
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -251,6 +288,113 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
       }
     },
     [createNode, nodeCount, fireConfetti, fireDelightAccent],
+  )
+
+  // Keyboard-first node creation (docs/06 Phase 9 task 6): same create call as `handleAddNode`
+  // (always a "scene" — the keyboard shortcut has no menu to pick a node type from, mirroring
+  // how `Shift+N` in other apps means "the default new thing"), but additionally captures the
+  // created node's id from the mutation's own `onSuccess` so the effect below can move DOM
+  // focus to it once it's actually rendered.
+  const handleAddNodeWithFocus = useCallback(() => {
+    const nodeType: NodeType = 'scene'
+    const stagger = nodeCount * 32
+    createNode.mutate(
+      {
+        node_type: nodeType,
+        title: DEFAULT_TITLES[nodeType],
+        canvas_x: 80 + stagger,
+        canvas_y: 80 + stagger,
+      },
+      { onSuccess: (canvasNode) => setPendingFocusNodeId(canvasNode.scene_id) },
+    )
+    if (isFirstNodeMilestone()) {
+      fireConfetti({ major: true })
+      fireDelightAccent()
+    }
+  }, [createNode, nodeCount, fireConfetti, fireDelightAccent])
+
+  // Once the newly-created node id shows up in `nodes` (the canvas query has refetched and
+  // xyflow has rendered its wrapper), move DOM focus onto it. `requestAnimationFrame` gives the
+  // just-committed DOM a paint before querying for it — the same caution `isFullscreen`'s
+  // `fitView` effect above takes with a short `setTimeout` after its own layout-affecting change.
+  useEffect(() => {
+    if (!pendingFocusNodeId) return
+    if (!nodes.some((node) => node.id === pendingFocusNodeId)) return
+    const raf = requestAnimationFrame(() => {
+      containerRef.current
+        ?.querySelector<HTMLElement>(`[data-id="${pendingFocusNodeId}"]`)
+        ?.focus()
+    })
+    setPendingFocusNodeId(null)
+    return () => cancelAnimationFrame(raf)
+  }, [pendingFocusNodeId, nodes])
+
+  // Keyboard audit fix (Phase 8): every node is already natively Tab-focusable (@xyflow/react
+  // gives its `.react-flow__node` wrapper `tabIndex=0` by default — `nodesFocusable` is on
+  // unless explicitly disabled, which this canvas never does). But xyflow's *own* internal
+  // Enter/Space keydown handling only toggles its internal selection state — it never calls
+  // the `onNodeClick` prop, so Enter previously did nothing visible (no drawer opened).
+  // This listens on the canvas container (an ancestor of every node wrapper, so the keydown
+  // bubbles up to it) and opens the same `NodeEditor` a mouse click would, but only when the
+  // keydown's target is the node wrapper itself — not a descendant like the Duplicate/⋯
+  // buttons rendered inside the card, which already handle their own Enter natively.
+  //
+  // Phase 9 tasks 6+7 extend this same handler with two more bindings. Both use `Shift+<letter>`
+  // specifically because it collides with nothing already active on this canvas: xyflow's own
+  // defaults here are Backspace/Delete (`deleteKeyCode` above), arrow keys (built-in node nudge),
+  // and `Shift` held while *dragging the pane* (its default `selectionKeyCode`, mouse-only — a
+  // bare `Shift+<letter>` keypress never starts a drag); the app's global `R`/`F` reading
+  // shortcuts (`lib/reading-shortcuts.ts`) are single letters with no modifier and are only ever
+  // mounted on the manuscript reader route, not here.
+  //   - `Shift+N` — task 6: add a node and move focus straight to it.
+  //   - `Shift+C` — task 7: start connect-mode from the focused node; pressed again (or Enter)
+  //     confirms a connection to whichever node is now focused. `Escape` cancels.
+  const handleCanvasKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement
+      const isNodeTarget = target.classList?.contains('react-flow__node')
+      const targetNodeId = isNodeTarget ? target.getAttribute('data-id') : null
+      const hasModifier = event.ctrlKey || event.altKey || event.metaKey
+
+      if (!hasModifier && event.shiftKey && event.key.toLowerCase() === 'n') {
+        event.preventDefault()
+        handleAddNodeWithFocus()
+        return
+      }
+
+      if (!hasModifier && event.shiftKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        if (!connectSourceId) {
+          if (!targetNodeId) return
+          setConnectSourceId(targetNodeId)
+          setConnectAnnouncement(
+            `Connecting from ${nodeTitleById(targetNodeId)}. Tab to a target node and press Enter.`,
+          )
+        } else {
+          confirmConnection(targetNodeId)
+        }
+        return
+      }
+
+      if (connectSourceId && event.key === 'Escape') {
+        event.preventDefault()
+        setConnectSourceId(null)
+        setConnectAnnouncement('Connection cancelled.')
+        return
+      }
+
+      if (event.key === 'Enter') {
+        if (connectSourceId) {
+          event.preventDefault()
+          confirmConnection(targetNodeId)
+          return
+        }
+        if (!isNodeTarget || !targetNodeId) return
+        event.preventDefault()
+        setSelectedNodeId(targetNodeId)
+      }
+    },
+    [connectSourceId, confirmConnection, nodeTitleById, handleAddNodeWithFocus],
   )
 
   // Bridges `handleAddNode` out to the book-screen tab row, which renders the "Add node"
@@ -286,7 +430,27 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     setAddNode(stableAddNode, isPending)
   }, [setAddNode, stableAddNode, isPending])
 
+  const handleApplyTemplate = useCallback(
+    (templateKey: CanvasTemplateKey) => {
+      applyTemplate.mutate({ template_key: templateKey })
+    },
+    [applyTemplate],
+  )
+
   const isEmpty = useMemo(() => !isLoading && nodes.length === 0, [isLoading, nodes.length])
+
+  // Visible connect-mode indicator (docs/06 Phase 9 task 7): a render-time-only className
+  // overlay on the connect-mode source node — never written back into `nodes`/`setNodes`, so
+  // it can't fight the drag/position-save flow or leak into the mutation payloads above. Falls
+  // back to the plain `nodes` array (skipping the `.map`) whenever connect-mode isn't active.
+  const displayNodes = useMemo(() => {
+    if (!connectSourceId) return nodes
+    return nodes.map((node) =>
+      node.id === connectSourceId
+        ? { ...node, className: cn(node.className, 'ring-4 ring-primary ring-offset-2 ring-offset-background') }
+        : node,
+    )
+  }, [nodes, connectSourceId])
 
   // Total words across the canvas's scenes (docs/10 §5 word ticker): sums each node's
   // `word_count` if the canvas DTO ever carries it, otherwise falls back to a plain node
@@ -329,6 +493,7 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         'overflow-hidden border-border',
         isFullscreen
@@ -337,8 +502,16 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
       )}
       onKeyDown={handleCanvasKeyDown}
     >
+      {/* Connect-mode announcements (docs/06 Phase 9 task 7): visually hidden, but announced
+          by screen readers whenever `connectAnnouncement` changes — "Connecting from…",
+          "Connected A to B.", "Connection cancelled." The visible cue for sighted keyboard
+          users is the ring highlight `displayNodes` applies to the source node below. */}
+      <div aria-live="polite" className="sr-only">
+        {connectAnnouncement}
+      </div>
+
       <ReactFlow<SceneFlowNode, Edge>
-        nodes={nodes}
+        nodes={displayNodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -402,7 +575,7 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
 
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="glass glass-edge pointer-events-none flex flex-col items-center gap-1 rounded-2xl px-8 py-10 text-center">
+          <div className="glass glass-edge pointer-events-auto flex flex-col items-center gap-1 rounded-2xl px-8 py-10 text-center">
             <LottiePlayer
               animationData={() => import('../../assets/lottie/empty-state.json')}
               loop
@@ -414,6 +587,33 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
               Scenes, plot points, and loose thoughts all start from the “Add node” button in
               the toolbar.
             </p>
+            {/* Canvas templates (docs/06 Phase 9 task 5) — an alternative to building the
+                canvas node-by-node. Only ever rendered on a genuinely blank canvas, so the
+                backend's 409 (`TemplateAlreadyAppliedError`) is a rare double-click/other-tab
+                race rather than the expected path — handled gracefully in
+                `useApplyCanvasTemplate`'s `onError` regardless. */}
+            <p className="mt-3 text-xs text-muted-foreground">or start from a template</p>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+              {CANVAS_TEMPLATE_MENU.map(({ key, label, icon: Icon }) => {
+                const isThisPending =
+                  applyTemplate.isPending && applyTemplate.variables?.template_key === key
+                return (
+                  <Button
+                    key={key}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={applyTemplate.isPending}
+                    aria-busy={isThisPending}
+                    aria-label={`Start canvas from the ${label} template`}
+                    onClick={() => handleApplyTemplate(key)}
+                  >
+                    <Icon className="size-4" />
+                    {isThisPending ? 'Applying…' : label}
+                  </Button>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

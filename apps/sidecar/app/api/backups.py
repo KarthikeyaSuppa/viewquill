@@ -15,13 +15,24 @@ router = APIRouter(tags=["backups"])
 
 @router.post("/backups/run")
 def run_backup() -> dict:
-    path = backup_service.run_rotation()
+    try:
+        path = backup_service.run_rotation()
+    except Exception as exc:  # noqa: BLE001 — surface as a clean 500, never a raw traceback
+        raise HTTPException(status_code=500, detail=f"Backup rotation failed: {exc}") from exc
     return {"path": path}
 
 
 @router.get("/backups")
 def get_backups() -> list[dict]:
     return backup_service.list_backups()
+
+
+@router.get("/backups/status")
+def get_backup_status() -> dict:
+    """``{last_backup_at, next_backup_at}`` for a frontend backup-staleness nudge (Phase 9
+    task 2) -- both ``None`` if no backup has ever run yet. Separate from ``GET /backups``
+    (a list of per-snapshot records) since this is a single derived summary, not a list."""
+    return backup_service.backup_status()
 
 
 @router.post("/backups/{name}/restore")

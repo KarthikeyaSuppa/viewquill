@@ -218,6 +218,12 @@ class ProviderClient:
                 stream=True,
                 temperature=temperature,
                 api_base=get_settings().ollama_base_url,
+                # How long Ollama keeps this model resident in RAM after the request
+                # completes (docs/06 Phase 9 task 11 "idle RAM/perf tuning") — configurable
+                # via QUILLNIGHT_OLLAMA_KEEP_ALIVE so idle memory footprint can be tuned
+                # without a code change. Groq (above) has no equivalent — it's a hosted
+                # API, not a local model process.
+                keep_alive=get_settings().ollama_keep_alive,
             )
         else:  # pragma: no cover — exhaustive per ProviderName
             raise ValueError(f"Unknown provider: {provider!r}")

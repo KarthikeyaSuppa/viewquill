@@ -278,6 +278,75 @@ def test_move_scene_same_book_is_noop_and_does_not_delete_link(client: TestClien
     assert any(n["scene_id"] == scene_id for n in canvas_after.json()["nodes"])
 
 
+def test_apply_canvas_template_creates_scenes_and_sequential_edges(client: TestClient) -> None:
+    book_id = _create_book(client, "Template Book")
+
+    resp = client.post(
+        f"/books/{book_id}/canvas/apply-template", json={"template_key": "three_act"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["nodes"]) == 3
+    assert len(body["edges"]) == 2
+    assert [n["title"] for n in sorted(body["nodes"], key=lambda n: n["canvas_x"])] == [
+        "Act I — Setup",
+        "Act II — Confrontation",
+        "Act III — Resolution",
+    ]
+    # Edges connect sequentially in beat order.
+    node_by_id = {n["scene_id"]: n for n in body["nodes"]}
+    for edge in body["edges"]:
+        assert edge["connection_type"] == "sequence"
+        source_x = node_by_id[edge["source_scene_id"]]["canvas_x"]
+        target_x = node_by_id[edge["target_scene_id"]]["canvas_x"]
+        assert source_x < target_x
+
+    # Confirm it persisted via a fresh GET too.
+    canvas = client.get(f"/books/{book_id}/canvas")
+    assert len(canvas.json()["nodes"]) == 3
+    assert len(canvas.json()["edges"]) == 2
+
+
+def test_apply_canvas_template_heros_journey_beat_count(client: TestClient) -> None:
+    book_id = _create_book(client, "Heros Journey Book")
+
+    resp = client.post(
+        f"/books/{book_id}/canvas/apply-template", json={"template_key": "heros_journey"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["nodes"]) == 12
+    assert len(body["edges"]) == 11
+
+
+def test_apply_canvas_template_rejects_non_empty_canvas(client: TestClient) -> None:
+    book_id = _create_book(client, "Non Empty Canvas Book")
+    scene_id = _create_scene(client, "Existing Scene")
+    client.post(f"/books/{book_id}/scenes/{scene_id}")
+
+    resp = client.post(
+        f"/books/{book_id}/canvas/apply-template", json={"template_key": "three_act"}
+    )
+    assert resp.status_code == 409
+
+    # Nothing extra was added — canvas is untouched.
+    canvas = client.get(f"/books/{book_id}/canvas")
+    assert len(canvas.json()["nodes"]) == 1
+
+
+def test_apply_canvas_template_unknown_key_is_400(client: TestClient) -> None:
+    book_id = _create_book(client, "Unknown Template Book")
+    resp = client.post(f"/books/{book_id}/canvas/apply-template", json={"template_key": "nope"})
+    assert resp.status_code == 400
+
+
+def test_apply_canvas_template_404_for_missing_book(client: TestClient) -> None:
+    resp = client.post(
+        "/books/does-not-exist/canvas/apply-template", json={"template_key": "three_act"}
+    )
+    assert resp.status_code == 404
+
+
 def test_canvas_and_edges_404_for_missing_book_or_scene(client: TestClient) -> None:
     assert client.get("/books/does-not-exist/canvas").status_code == 404
     assert client.post("/books/does-not-exist/scenes/also-missing").status_code == 404

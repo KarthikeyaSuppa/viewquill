@@ -6,6 +6,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
 import { HelpGuide } from '@/components/help/help-guide'
+import { BackupNudge } from '@/components/backup-nudge'
 import { Button } from '@/components/ui/button'
 import { resolveAvatar } from '@/components/auth/avatars'
 import { useSettings } from '@/queries/settings'
@@ -118,6 +119,7 @@ export function AppShell() {
       </aside>
 
       <main id="main-content" tabIndex={-1} className="relative z-10 min-w-0 flex-1 overflow-y-auto p-6 outline-none">
+        <BackupNudge />
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={location.pathname}

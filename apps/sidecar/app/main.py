@@ -7,8 +7,9 @@ and the Tauri WebView origins; the sidecar is never exposed off-host (docs/02).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
@@ -49,8 +50,50 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 # localhost (any port) + Tauri's WebView origins on Windows.
 _ALLOW_ORIGIN_REGEX = r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost|https://tauri\.localhost)$"
 
+# Floor on the periodic backup cadence regardless of what's configured (config.py's
+# ``backup_interval_minutes``) — protects against a misconfiguration hammering the DB with
+# back-to-back VACUUM INTO snapshots.
+_MIN_BACKUP_INTERVAL_MINUTES = 5
 
-@asynccontextmanager
+
+def _effective_backup_interval_seconds(interval_minutes: int) -> float:
+    return max(interval_minutes, _MIN_BACKUP_INTERVAL_MINUTES) * 60
+
+
+async def _backup_rotation_loop(interval_seconds: float) -> None:
+    """Runs ``backup_service.run_rotation`` every ``interval_seconds`` until cancelled.
+
+    Takes a raw seconds value (no floor applied here) so tests can drive it with a tiny
+    interval instead of waiting on real time; ``_periodic_backup_loop`` below is the
+    production entrypoint that applies the configured-minutes floor.
+
+    Cancellation (app shutdown) is only ever observed at the ``asyncio.sleep`` below, between
+    rotations. Once a rotation has started it is shielded from this task's own cancellation,
+    so a shutdown that lands mid-rotation can't interrupt ``VACUUM INTO`` and can't leave a
+    partial snapshot file behind — the shielded rotation is always awaited to completion (even
+    if that means shutdown waits a moment) before the ``CancelledError`` is re-raised. The loop
+    is also strictly sequential: it only starts the next rotation after the previous one has
+    fully finished, so two rotations from this timer can never overlap.
+    """
+    while True:
+        await asyncio.sleep(interval_seconds)
+        rotation = asyncio.ensure_future(asyncio.to_thread(backup_service.run_rotation))
+        try:
+            await asyncio.shield(rotation)
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):  # noqa: BLE001 — already shutting down
+                await rotation
+            raise
+        except Exception:  # noqa: BLE001 — a failed periodic rotation must never kill the loop
+            logger.exception("Periodic backup rotation failed; will retry next interval.")
+
+
+async def _periodic_backup_loop(interval_minutes: int) -> None:
+    """Production entrypoint: floors ``interval_minutes`` then runs the rotation loop."""
+    await _backup_rotation_loop(_effective_backup_interval_seconds(interval_minutes))
+
+
+@contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = get_settings()
     logger.info("Quillnight sidecar starting — data dir: %s", cfg.data_dir)
@@ -69,8 +112,15 @@ async def lifespan(app: FastAPI):
         logger.info("Backup rotation complete: %s", snapshot)
     except Exception:  # noqa: BLE001 — a failed backup must never block startup
         logger.exception("Backup rotation failed; continuing without it.")
-    yield
-    logger.info("Quillnight sidecar shutting down.")
+
+    backup_task = asyncio.create_task(_periodic_backup_loop(cfg.backup_interval_minutes))
+    try:
+        yield
+    finally:
+        backup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await backup_task
+        logger.info("Quillnight sidecar shutting down.")
 
 
 def create_app() -> FastAPI:

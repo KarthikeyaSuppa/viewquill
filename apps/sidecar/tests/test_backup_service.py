@@ -10,6 +10,8 @@ distinct timestamps instead of real sleeps.
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -69,6 +71,85 @@ def test_list_backups_returns_newest_first(settings) -> None:
     for item in items:
         assert item["size_bytes"] > 0
         assert "created_at" in item
+
+
+def test_backup_status_is_null_before_any_backup(settings) -> None:
+    assert backup_service.backup_status() == {"last_backup_at": None, "next_backup_at": None}
+
+
+def test_backup_status_reflects_last_and_next_after_a_rotation(settings) -> None:
+    _init_db(settings.db_path)
+    now = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
+    backup_service.run_rotation(keep=10, now=now)
+
+    status = backup_service.backup_status()
+    items = backup_service.list_backups()
+
+    assert status["last_backup_at"] == items[0]["created_at"]
+    last_dt = datetime.fromisoformat(status["last_backup_at"])
+    next_dt = datetime.fromisoformat(status["next_backup_at"])
+    assert next_dt - last_dt == timedelta(minutes=settings.backup_interval_minutes)
+
+
+def test_backup_status_last_backup_is_the_newest_of_several(settings) -> None:
+    _init_db(settings.db_path)
+    base = datetime(2026, 6, 1, tzinfo=UTC)
+    for i in range(3):
+        backup_service.run_rotation(keep=10, now=base + timedelta(minutes=i))
+
+    status = backup_service.backup_status()
+    newest = backup_service.list_backups()[0]
+    assert status["last_backup_at"] == newest["created_at"]
+
+
+def test_concurrent_rotations_do_not_collide(settings, monkeypatch) -> None:
+    """Reviewer-flagged gap: nothing serialized run_rotation() between the periodic timer's
+    asyncio.to_thread worker and the manual /backups/run endpoint's FastAPI threadpool
+    worker -- both are real OS threads, so filename uniqueness relied purely on
+    microsecond-clock resolution never colliding. Drives two genuine OS threads through
+    run_rotation() at once (with an artificial delay inside the critical section, to widen
+    the window in which an unlocked pair of threads would race) and asserts the
+    threading.Lock in backup_service now serializes them: no exception, two distinct
+    snapshot files on disk."""
+    _init_db(settings.db_path)
+
+    orig_trim = backup_service._trim
+
+    def slow_trim(backups_dir: Path, keep: int) -> None:
+        # Held while the module-level lock is still acquired, so a second thread blocked
+        # on that lock can't compute its own timestamp until well after this one's.
+        time.sleep(0.05)
+        orig_trim(backups_dir, keep)
+
+    monkeypatch.setattr(backup_service, "_trim", slow_trim)
+
+    results: list[str] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def worker() -> None:
+        try:
+            path = backup_service.run_rotation(keep=10)
+        except BaseException as exc:  # noqa: BLE001 — capture any failure for the assertion
+            with lock:
+                errors.append(exc)
+        else:
+            with lock:
+                results.append(path)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert len(results) == 2
+    assert results[0] != results[1]
+
+    backups_dir = settings.data_dir / "backups"
+    files = list(backups_dir.glob("quillnight-*.sqlite"))
+    assert len(files) == 2
 
 
 @pytest.mark.parametrize("bad_name", ["../evil.sqlite", "sub/evil.sqlite", "..\\evil.sqlite", ""])
