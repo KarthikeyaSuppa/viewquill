@@ -1,22 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   BookOpen,
-  Check,
   ChevronDown,
   Flag,
   Link2,
   MapPin,
   Pencil,
   Plus,
-  Settings2,
   Trash2,
   Unlink2,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -44,7 +39,6 @@ import {
   useLinkCodexToScene,
   useSceneCodex,
   useUnlinkCodexFromScene,
-  useUpdateCodex,
 } from '@/queries/codex'
 import { CodexEntryDialog } from '@/components/codex/codex-entry-dialog'
 import { useBooks } from '@/queries/books'
@@ -62,11 +56,11 @@ const TYPE_OPTIONS: { value: CodexEntryType; label: string; icon: typeof Users }
  * The Codex side panel (docs/01-PRODUCT-VISION.md §Codex, docs/03-DATA-MODEL.md
  * `codex_entries`/`codex_scene_links`, docs/06 Phase 2 task H3).
  *
- * MVP ONLY — name + summary + scene links. The full custom-fields/relationships/arc
- * editor (docs/03 `codex_entries.custom_fields`, relationships) is Phase 3; this panel
- * deliberately doesn't touch that yet. Defaults to Characters with a small filter for the
- * other three entry types. When a canvas node is selected, each row gets a one-click
- * link/unlink toggle against that Scene.
+ * Canvas-scoped quick view over the Codex: list + filter + per-Scene link/unlink toggle.
+ * Creating and editing entries both defer to the full `CodexEntryDialog` (custom fields,
+ * relationships, image, arc states) rather than duplicating any of that here — this panel
+ * only owns the list, the type filter, and the link-to-selected-node toggle. Defaults to
+ * Characters with a small filter for the other three entry types.
  */
 export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   const [open, setOpen] = useState(false)
@@ -85,20 +79,14 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   const linkToScene = useLinkCodexToScene(sceneId)
   const unlinkFromScene = useUnlinkCodexFromScene(sceneId)
 
-  const [newName, setNewName] = useState('')
-  const [newSummary, setNewSummary] = useState('')
-  const nameInvalid = newName.trim().length === 0
-
+  /** Creates a bare entry of the current filter type, then opens it in the full
+   * `CodexEntryDialog` for naming/details — mirrors the dialog-driven create pattern
+   * used elsewhere in the app rather than duplicating name/summary fields here. */
   function handleCreate() {
-    if (nameInvalid) return
+    const typeLabel = TYPE_OPTIONS.find((t) => t.value === entryType)?.label.replace(/s$/, '') ?? 'Entry'
     createCodex.mutate(
-      { entry_type: entryType, name: newName.trim(), summary: newSummary.trim() || null },
-      {
-        onSuccess: () => {
-          setNewName('')
-          setNewSummary('')
-        },
-      },
+      { entry_type: entryType, name: `New ${typeLabel}` },
+      { onSuccess: (created) => setEditingEntry(created) },
     )
   }
 
@@ -179,31 +167,10 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
         </div>
       </ScrollArea>
 
-      <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2.5">
-        <Label htmlFor="codex-new-name" className="text-xs">
-          New {TYPE_OPTIONS.find((t) => t.value === entryType)?.label.replace(/s$/, '').toLowerCase()}
-        </Label>
-        <Input
-          id="codex-new-name"
-          value={newName}
-          onChange={(event) => setNewName(event.target.value)}
-          placeholder="Name"
-          className="h-8 text-sm"
-        />
-        <Textarea
-          value={newSummary}
-          onChange={(event) => setNewSummary(event.target.value)}
-          placeholder="Summary (optional)"
-          className="min-h-14 text-xs"
-        />
-        <Button
-          size="sm"
-          onClick={handleCreate}
-          disabled={nameInvalid || createCodex.isPending}
-          className="self-start"
-        >
+      <div className="border-t border-border px-3 py-2.5">
+        <Button size="sm" onClick={handleCreate} disabled={createCodex.isPending} className="w-full">
           <Plus className="size-3.5" />
-          Add
+          New {TYPE_OPTIONS.find((t) => t.value === entryType)?.label.replace(/s$/, '')}
         </Button>
       </div>
 
@@ -221,8 +188,8 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   )
 }
 
-/** One Codex entry row — view mode shows name/summary + link toggle + edit/delete; edit
- * mode swaps in Input/Textarea drafts with Save/Cancel. */
+/** One Codex entry row — name/summary + link toggle, an edit button that opens the full
+ * `CodexEntryDialog`, and delete. */
 function CodexEntryRow({
   entry,
   linked,
@@ -238,58 +205,7 @@ function CodexEntryRow({
   /** Opens the full CodexEntryDialog (custom fields, relationships, image, arc states). */
   onOpenEditor: () => void
 }) {
-  const updateCodex = useUpdateCodex()
   const deleteCodex = useDeleteCodex()
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(entry.name)
-  const [summary, setSummary] = useState(entry.summary ?? '')
-
-  // Re-seed drafts only when entering edit mode (never clobber an in-progress edit if the
-  // list refetches in the background).
-  useEffect(() => {
-    if (!editing) return
-    setName(entry.name)
-    setSummary(entry.summary ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing])
-
-  const nameInvalid = name.trim().length === 0
-
-  function handleSave() {
-    if (nameInvalid) return
-    updateCodex.mutate(
-      { id: entry.id, name: name.trim(), summary: summary.trim() || null },
-      { onSuccess: () => setEditing(false) },
-    )
-  }
-
-  if (editing) {
-    return (
-      <div className="flex flex-col gap-1.5 rounded-lg border border-border p-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          aria-invalid={nameInvalid}
-          className="h-8 text-sm"
-        />
-        <Textarea
-          value={summary}
-          onChange={(event) => setSummary(event.target.value)}
-          placeholder="Summary (optional)"
-          className="min-h-14 text-xs"
-        />
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" onClick={handleSave} disabled={nameInvalid || updateCodex.isPending}>
-            <Check className="size-3.5" />
-            Save
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex items-start gap-1.5 rounded-lg border border-border p-2">
@@ -321,16 +237,13 @@ function CodexEntryRow({
             </TooltipContent>
           </Tooltip>
         )}
-        <Button variant="ghost" size="icon-sm" aria-label="Edit entry" onClick={() => setEditing(true)}>
-          <Pencil className="size-3.5" />
-        </Button>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Open full editor" onClick={onOpenEditor}>
-              <Settings2 className="size-3.5" />
+            <Button variant="ghost" size="icon-sm" aria-label="Edit entry" onClick={onOpenEditor}>
+              <Pencil className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Custom fields, relationships, image, arc states</TooltipContent>
+          <TooltipContent>Edit — name, custom fields, relationships, image, arc states</TooltipContent>
         </Tooltip>
         <AlertDialog>
           <AlertDialogTrigger asChild>

@@ -110,7 +110,7 @@ export function ReadingComfortWizard() {
         showCloseButton={!isFirstRun}
         onEscapeKeyDown={(e) => isFirstRun && e.preventDefault()}
         onInteractOutside={(e) => isFirstRun && e.preventDefault()}
-        className="glass glass-edge max-w-xl gap-5 sm:max-w-xl"
+        className="glass glass-edge max-h-[85vh] max-w-xl gap-5 overflow-y-auto sm:max-w-xl"
       >
         <DialogHeader className="flex-row items-center gap-3 space-y-0">
           <LottiePlayer

@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarClock, List, Network, Plus, Search, Users } from 'lucide-react'
+import { CalendarClock, List, Loader2, Network, Plus, Search, UserPlus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { useBookCharacters, useCreateCodex, useLinkCodexToBook } from '@/queries/codex'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useBookCharacters, useCodexEntries, useCreateCodex, useLinkCodexToBook } from '@/queries/codex'
 import { useBooks } from '@/queries/books'
 import { useCanvas } from '@/queries/canvas'
 import { useTimeline } from '@/queries/outline'
@@ -163,10 +171,21 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
   const intersectingLettersRef = useRef(new Set<string>())
   const { motionOk } = useDelight()
 
+  const [attachOpen, setAttachOpen] = useState(false)
+  const [attachQuery, setAttachQuery] = useState('')
+
   const { data, isLoading } = useBookCharacters(bookId)
   const { data: books } = useBooks()
   const createCodex = useCreateCodex()
   const linkToBook = useLinkCodexToBook(bookId)
+
+  // "Attach existing" (PHASE-UI-EFFECTS §3 gap fix): CodexEntry is canonical/shared across
+  // every Book (no `book_id` column at all — association is via `book_codex_links`), so a
+  // character created while working on a different Book has no UI anywhere to get attached
+  // to *this* Book short of recreating it. `useCodexEntries('character')` already wraps the
+  // unfiltered `GET /codex` (every character-type entry ever created, any Book) — reused as-is
+  // rather than adding a new hook, same data `codex-panel.tsx` already fetches.
+  const { data: allCharacters, isLoading: allCharactersLoading } = useCodexEntries('character')
 
   // Same ordered-scenes source the Outline tab's Timeline view uses (`useCanvas` for
   // scene id/title, `useTimeline` for `timeline_order_index`/`in_story_time_*` — see
@@ -247,6 +266,27 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
     }))
     return buildRows(scenes, timelineRows ?? [])
   }, [canvas, timelineRows])
+
+  // Already linked to this Book — excluded from the "Attach existing" picker so it only ever
+  // offers characters not yet on this Book's list.
+  const linkedIds = useMemo(() => new Set(entries.map((entry) => entry.id)), [entries])
+  const attachCandidates = useMemo(
+    () => (allCharacters ?? []).filter((entry) => !linkedIds.has(entry.id)),
+    [allCharacters, linkedIds],
+  )
+  const filteredAttachCandidates = useMemo(
+    () => attachCandidates.filter((entry) => matchesQuery(entry, attachQuery)),
+    [attachCandidates, attachQuery],
+  )
+
+  function handleOpenAttach(open: boolean) {
+    setAttachOpen(open)
+    if (!open) setAttachQuery('')
+  }
+
+  function handleAttachExisting(entryId: string) {
+    linkToBook.mutate(entryId)
+  }
 
   const nameInvalid = newName.trim().length === 0
   const addPending = createCodex.isPending || linkToBook.isPending
@@ -340,10 +380,16 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           </Button>
         </div>
 
-        <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
-          <Plus className="size-4" />
-          Add character
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => handleOpenAttach(true)}>
+            <UserPlus className="size-4" />
+            Attach existing
+          </Button>
+          <Button size="sm" onClick={() => setCreating((prev) => !prev)}>
+            <Plus className="size-4" />
+            Add character
+          </Button>
+        </div>
       </div>
 
       {creating && (
@@ -463,6 +509,73 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           books={books}
         />
       )}
+
+      <Dialog open={attachOpen} onOpenChange={handleOpenAttach}>
+        <DialogContent className="max-w-md gap-4">
+          <DialogHeader>
+            <DialogTitle>Attach an existing character</DialogTitle>
+            <DialogDescription>
+              Characters are shared across your whole Story Library. Pick one already created
+              in another Book to add it to this one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="attach-character-search">Search characters</Label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                id="attach-character-search"
+                value={attachQuery}
+                onChange={(event) => setAttachQuery(event.target.value)}
+                placeholder="Filter by name or summary…"
+                className="pl-8"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <ScrollArea className="h-[min(50vh,320px)]">
+            {allCharactersLoading ? (
+              <p className="flex items-center justify-center gap-2 px-1 py-6 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                Loading characters…
+              </p>
+            ) : attachCandidates.length === 0 ? (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                Every character in your Story Library is already linked to this Book.
+              </p>
+            ) : filteredAttachCandidates.length === 0 ? (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                No characters match “{attachQuery.trim()}”.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1 pr-2">
+                {filteredAttachCandidates.map((entry) => (
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleAttachExisting(entry.id)}
+                      disabled={linkToBook.isPending}
+                      className={cn(
+                        'flex w-full flex-col gap-0.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors',
+                        'hover:bg-accent hover:text-accent-foreground',
+                        'focus-visible:border-ring focus-visible:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+                        'disabled:cursor-not-allowed disabled:opacity-60',
+                      )}
+                    >
+                      <span className="truncate text-sm font-medium">{entry.name}</span>
+                      {entry.summary && (
+                        <span className="line-clamp-2 text-xs text-muted-foreground">{entry.summary}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

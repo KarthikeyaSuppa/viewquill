@@ -533,6 +533,13 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         proOptions={{ hideAttribution: true }}
+        // Tighter than xyflow's library default (0.5-2). The per-node action row
+        // (Enhance/Duplicate/... buttons, thumbnail strip in nodes.tsx) lives inside
+        // this zoom-transformed pane, so at the default's wide end those hit targets
+        // shrink enough to be hard to click precisely — bounding zoom keeps them
+        // comfortably clickable at both extremes.
+        minZoom={0.4}
+        maxZoom={1.5}
       >
         <Background className="!bg-background" gap={24} size={1} />
         <Controls

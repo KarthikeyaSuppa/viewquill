@@ -496,7 +496,7 @@ export function HelpGuide({
 
           {SECTIONS.map(({ id, content }) => (
             <TabsContent key={id} value={id} className="min-h-0 flex-1 data-[state=inactive]:hidden">
-              <ScrollArea className="h-[52vh] pr-3">{content}</ScrollArea>
+              <ScrollArea className="h-full pr-3">{content}</ScrollArea>
             </TabsContent>
           ))}
         </Tabs>

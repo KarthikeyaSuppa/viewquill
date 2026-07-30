@@ -32,6 +32,7 @@ import { ScreenplayNode } from '@/components/canvas/screenplay-node'
 import { useCreateNode, useRemoveFromCanvas } from '@/queries/canvas'
 import { useDeleteScene } from '@/queries/screenplay'
 import { imageThumbUrl, useEntityImages } from '@/queries/images'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCardStyleStore } from '@/stores/card-style'
 import type { NodeType } from '@/lib/api'
 
@@ -80,7 +81,7 @@ function BaseNode(
   { accentClass, icon: Icon, label }: BaseNodeConfig,
 ) {
   const cardStyle = useCardStyleStore((state) => state.cardStyle)
-  const { data: images } = useEntityImages('scene', data.sceneId)
+  const { data: images, isLoading: imagesLoading, isError: imagesError } = useEntityImages('scene', data.sceneId)
   const createNode = useCreateNode(data.bookId)
   const removeFromCanvas = useRemoveFromCanvas(data.bookId)
   const deleteScene = useDeleteScene()
@@ -92,6 +93,9 @@ function BaseNode(
   // first in that order, everything else falls back to recency. So the first item is simply
   // whatever the user (or, absent any ordering, recency) says is the cover; no bucket
   // heuristic needed. Falls back to the placeholder if nothing's attached.
+  // NOTE: `images` is also `undefined` while loading or on a fetch error — neither case means
+  // the entity actually has zero images, so callers must gate on `imagesLoading`/`imagesError`
+  // rather than reading an empty `mainImage`/`thumbnails` as "confirmed no images".
   const mainImage = images?.[0] ?? null
   const thumbnails = (images ?? []).slice(0, 4)
   const aspectClass = cardStyle === 'square' ? 'aspect-square' : 'aspect-[16/10]'
@@ -128,18 +132,24 @@ function BaseNode(
               {label}
             </div>
 
-            {mainImage ? (
+            {imagesLoading ? (
+              <Skeleton className={cn('w-full rounded-lg', aspectClass)} aria-hidden />
+            ) : mainImage ? (
               <img
                 src={imageThumbUrl(mainImage.id)}
                 alt=""
                 className={cn('w-full rounded-lg object-cover', aspectClass)}
               />
             ) : (
+              // No distinct visual for the error case (small, scoped fix) — but it's deliberately
+              // not conflated with a confirmed-empty state; see the NOTE on `mainImage` above for
+              // why this placeholder can mean either "none attached" or "failed to load".
               <div
                 className={cn(
                   'flex w-full items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground',
                   aspectClass,
                 )}
+                title={imagesError ? 'Could not load attached images' : undefined}
                 aria-hidden
               >
                 <Image className="size-5" />
@@ -156,7 +166,7 @@ function BaseNode(
         <div className="flex items-center justify-between px-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
+              <Button variant="ghost" size="icon-lg" className="rounded-full">
                 <Sparkles className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -168,7 +178,7 @@ function BaseNode(
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-lg"
                   className="rounded-full"
                   aria-label="Duplicate"
                   onClick={handleDuplicate}
@@ -184,7 +194,7 @@ function BaseNode(
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-lg"
                   className="rounded-full"
                   aria-label="More actions"
                   onClick={handleMenuTriggerClick}
@@ -239,7 +249,8 @@ function BaseNode(
             <AlertDialogAction
               variant="destructive"
               disabled={deleteScene.isPending}
-              onClick={() => {
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                event.stopPropagation()
                 deleteScene.mutate(data.sceneId, { onSuccess: () => setDeleteOpen(false) })
               }}
             >
