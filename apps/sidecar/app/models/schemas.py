@@ -656,3 +656,51 @@ class DraftPreviewOut(BaseModel):
     front_matter: dict | None
     cover_image_id: str | None
     chapters: list[CompiledChapterPreviewOut] = Field(default_factory=list)
+
+
+# ── Semantic search backfill (Phase 10 task 3, PHASE10.md, docs/11-AI-INTELLIGENCE.md §2) —
+# app/services/search_index_service.py's bulk catch-up for Scene/CodexEntry rows that predate
+# the embed-on-save hooks. ──────────────────────────────────────────────────────────────────
+class SearchBackfillResponse(BaseModel):
+    scenes_indexed: int
+    codex_entries_indexed: int
+
+
+# ── Hybrid RRF search (Phase 10 task 4, PHASE10.md, docs/11-AI-INTELLIGENCE.md §2) —
+# app/services/hybrid_search_service.py's fused FTS5 + vec0 KNN search over Scene/CodexEntry
+# rows. Scenes/CodexEntry are canonical and shared across Books (no `book_id` column on
+# either row — see hybrid_search_service.py's module docstring for why this search is NOT
+# Book-scoped), so each result instead reports every Book it's currently linked to via
+# `book_scene_links`/`book_codex_links`. ────────────────────────────────────────────────────
+class SearchResult(BaseModel):
+    entity_type: Literal["scene", "codex_entry"]
+    entity_id: str
+    title: str
+    snippet: str | None
+    score: float
+    book_ids: list[str] = Field(default_factory=list)
+
+
+# ── Auto codex-link / similar-scene suggestions (Phase 10 task 5, PHASE10.md, docs/11-
+# AI-INTELLIGENCE.md §2) — app/services/suggestion_service.py's read-only "does this scene
+# resemble an existing Codex entry / another Scene" checks, built on hybrid_search_service.
+# Suggestions only, per this app's hard Accept/Reject rule (PROJECT-MAP.md §9) — nothing
+# here ever auto-links or auto-merges anything; a caller (frontend) decides what to do with
+# the list. ───────────────────────────────────────────────────────────────────────────────
+class CodexLinkSuggestion(BaseModel):
+    codex_entry_id: str
+    name: str
+    snippet: str | None
+    score: float
+
+
+class SimilarSceneSuggestion(BaseModel):
+    scene_id: str
+    title: str
+    snippet: str | None
+    score: float
+
+
+class SceneSuggestionsResponse(BaseModel):
+    codex_link_suggestions: list[CodexLinkSuggestion]
+    similar_scenes: list[SimilarSceneSuggestion]

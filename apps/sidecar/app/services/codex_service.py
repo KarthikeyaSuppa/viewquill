@@ -13,10 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
-
-from sqlalchemy import or_
 
 from app.db.base import new_uuid, utcnow_iso
 from app.models.orm import (
@@ -27,6 +25,7 @@ from app.models.orm import (
     CodexRelationship,
     CodexSceneLink,
 )
+from app.services import search_index_service
 
 
 def create_entry(
@@ -47,6 +46,9 @@ def create_entry(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+    # Embed-on-save (Phase 10 task 3, PHASE10.md) — derived data, never blocks this save;
+    # see search_index_service's module docstring.
+    search_index_service.upsert_entity("codex_entry", entry.id, entry.name, entry.summary)
     return entry
 
 
@@ -73,6 +75,9 @@ def update_entry(db: Session, entry_id: str, values: dict[str, Any]) -> CodexEnt
     entry.updated_at = utcnow_iso()
     db.commit()
     db.refresh(entry)
+    # Embed-on-save (Phase 10 task 3) — re-index unconditionally so the search index never
+    # drifts from the saved row, even on a patch that didn't touch name/summary.
+    search_index_service.upsert_entity("codex_entry", entry.id, entry.name, entry.summary)
     return entry
 
 
@@ -82,6 +87,9 @@ def delete_entry(db: Session, entry_id: str) -> bool:
         return False
     db.delete(entry)
     db.commit()
+    # Virtual tables (search_fts/embeddings) aren't real FK targets, so there's no DB-level
+    # cascade delete for them — clean up the index row explicitly (Phase 10 task 3).
+    search_index_service.delete_entity("codex_entry", entry_id)
     return True
 
 

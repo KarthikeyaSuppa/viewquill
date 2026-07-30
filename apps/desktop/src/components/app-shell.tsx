@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Library, LogOut, Settings } from 'lucide-react'
+import { Library, LogOut, Search, Settings } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
 import { HelpGuide } from '@/components/help/help-guide'
 import { BackupNudge } from '@/components/backup-nudge'
+import { SearchDialog } from '@/components/search/search-dialog'
 import { Button } from '@/components/ui/button'
 import { resolveAvatar } from '@/components/auth/avatars'
 import { useSettings } from '@/queries/settings'
@@ -41,6 +42,8 @@ export function AppShell() {
   const logout = useLogout()
   const avatar = resolveAvatar(currentUser?.avatar)
 
+  const [searchOpen, setSearchOpen] = useState(false)
+
   // First-run gate (docs/10 §7): once settings have loaded, auto-open the wizard exactly
   // once if onboarding hasn't been completed yet.
   useEffect(() => {
@@ -50,6 +53,20 @@ export function AppShell() {
       openWizard()
     }
   }, [settingsLoaded, settingsValues, openWizard])
+
+  // Global Ctrl/Cmd+K shortcut (Phase 10 task 6) opens the library search from anywhere in
+  // the app shell, in addition to the always-visible sidebar button — a lightweight
+  // discoverability nod short of a full command palette (none exists yet to extend).
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <div className="relative flex min-h-screen overflow-hidden bg-background">
@@ -61,6 +78,7 @@ export function AppShell() {
       </a>
       <SettingsProvider />
       <ReadingComfortWizard />
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
 
       <div
         aria-hidden="true"
@@ -94,6 +112,20 @@ export function AppShell() {
               {label}
             </NavLink>
           ))}
+
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className={cn(NAV_ITEM_CLASS, 'justify-between')}
+          >
+            <span className="flex items-center gap-2.5">
+              <Search className="size-4" />
+              Search
+            </span>
+            <kbd className="rounded border border-border/60 bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Ctrl K
+            </kbd>
+          </button>
 
           <HelpGuide triggerClassName={NAV_ITEM_CLASS} />
         </nav>

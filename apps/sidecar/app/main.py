@@ -33,6 +33,7 @@ from app.api import (
     outline as outline_api,
     profiles as profiles_api,
     scenes as scenes_api,
+    search as search_api,
     settings as settings_api,
     structure_templates as structure_templates_api,
     voice as voice_api,
@@ -162,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(export_api.router)
     app.include_router(export_api.draft_versions_router)
     app.include_router(draft_preview_api.router)
+    app.include_router(search_api.router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:

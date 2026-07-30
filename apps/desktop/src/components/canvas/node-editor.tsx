@@ -57,6 +57,7 @@ import type { BookType } from '@/queries/books'
 import type { SceneFlowNode } from '@/components/canvas/nodes'
 import { EnhanceDiff } from '@/components/canvas/enhance-diff'
 import { insertAtCaret, MicButton } from '@/components/voice/mic-button'
+import { SuggestionPanel } from '@/components/canvas/suggestion-panel'
 
 const STATUS_OPTIONS = ['draft', 'revised', 'final'] as const
 
@@ -258,6 +259,8 @@ function NodeEditorBody({
               </SelectContent>
             </Select>
           </div>
+
+          <SuggestionPanel sceneId={sceneId} />
 
           {script ? (
             <ElementsEditor sceneId={sceneId} />

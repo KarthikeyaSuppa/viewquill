@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import new_uuid, utcnow_iso
 from app.models.orm import Scene
+from app.services import search_index_service
 
 
 def _word_count(description: str | None) -> int:
@@ -40,6 +41,9 @@ def create_scene(
     db.add(scene)
     db.commit()
     db.refresh(scene)
+    # Embed-on-save (Phase 10 task 3, PHASE10.md) — derived data, never blocks this save;
+    # see search_index_service's module docstring.
+    search_index_service.upsert_entity("scene", scene.id, scene.title, scene.description)
     return scene
 
 
@@ -68,6 +72,9 @@ def update_scene(db: Session, scene_id: str, values: dict[str, Any]) -> Scene | 
     scene.updated_at = utcnow_iso()
     db.commit()
     db.refresh(scene)
+    # Embed-on-save (Phase 10 task 3) — re-index unconditionally so the search index never
+    # drifts from the saved row, even on a patch that didn't touch title/description.
+    search_index_service.upsert_entity("scene", scene.id, scene.title, scene.description)
     return scene
 
 
@@ -77,4 +84,7 @@ def delete_scene(db: Session, scene_id: str) -> bool:
         return False
     db.delete(scene)
     db.commit()
+    # Virtual tables (search_fts/embeddings) aren't real FK targets, so there's no DB-level
+    # cascade delete for them — clean up the index row explicitly (Phase 10 task 3).
+    search_index_service.delete_entity("scene", scene_id)
     return True

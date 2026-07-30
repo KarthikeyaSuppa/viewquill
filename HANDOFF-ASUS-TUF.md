@@ -120,29 +120,52 @@ not the other way around.
 
 ### 4c. Phase 10 — Semantic layer (v1.1, `docs/06-ROADMAP.md`)
 
-sqlite-vec vec0 tables + FTS5 index + embedding pipeline (CPU-pinned
-`qwen3-embedding:0.6b`, background embed-on-save, bulk backfill job); hybrid
-RRF search API + search UI; GraphRAG-lite context assembly replacing the
-flat context builder; auto codex-link suggestions on node save;
-similar-scene detection on new nodes. Demo: semantic search finds a scene by
-meaning not keywords; a scene mentioning an existing character pops a
-one-click link suggestion; a near-duplicate thought surfaces its earlier
-twin.
+**Most of this already landed on the build laptop (2026-07-30) — see
+`PHASE10.md`.** `sqlite-vec` turned out to need no model at all (pure PyPI
+extension package), so the schema, hybrid search, suggestion mechanisms, and
+frontend UI are already built and tested here, behind a deterministic stub
+embedding. What's actually left is narrow:
 
-- **Fully gated on 4a's semantic-layer smoke test passing first.**
-- Source: `docs/11-AI-INTELLIGENCE.md` (retrieval/RAG design), `docs/03-
-  DATA-MODEL.md` (schema — new vec0 tables need an Alembic migration),
-  `docs/06-ROADMAP.md` Phase 10 section.
-- Touch: new `apps/sidecar/app/services/embedding_service.py`,
-  `apps/sidecar/app/services/semantic_search_service.py`, new Alembic
-  migration, `apps/sidecar/app/api/` (new search route), a new frontend
-  search UI component + `queries/search.ts`, plus hooks into
-  `codex_service.py` (auto-link suggestions) and `canvas_service.py`
-  (similar-scene detection on node save).
-- Team split: database/schema owner designs the vec0 migration first
-  (architect-level call — get it right once, it's expensive to redo);
-  backend engineer builds the embedding pipeline + search API; frontend
-  engineer builds the search UI + link-suggestion affordance.
+- **Swap the real embedding call in.** `apps/sidecar/app/services/
+  embedding_service.py`'s `_embed_real()` currently raises
+  `NotImplementedError` with the exact drop-in documented in its module
+  docstring: `litellm.embedding(model=f"ollama/{settings.
+  default_embedding_model}", ...)`. Wire that in once Ollama + the
+  `qwen3-embedding:0.6b` model are actually available (§4a's semantic-layer
+  smoke test should run first to confirm the model/wheel combination works
+  on this hardware before wiring it into the real service).
+- **Re-run `POST /search/backfill`** against real embeddings once the swap
+  above lands — the stub-embedded backfill from the build laptop needs
+  redoing for real semantic quality (the schema/rows are already correct
+  structurally, only the vectors themselves are placeholders).
+- **Verify the actual Phase 10 demo criteria** from `docs/06-ROADMAP.md`:
+  semantic search finds a scene by meaning not just shared keywords; an
+  auto-link suggestion is genuinely conceptually relevant, not just
+  FTS5-keyword-driven; a near-duplicate scene surfaces its twin even when
+  worded differently. None of this is provable with the stub — it's the
+  first real thing to check once the swap lands.
+- **GraphRAG-lite context assembly** (replacing the flat context builder
+  for Enhance calls) was **not** started on the build laptop — it's
+  genuinely new work, not a stub-to-real swap. Source:
+  `docs/11-AI-INTELLIGENCE.md` (retrieval/RAG design). Touch:
+  `apps/sidecar/app/services/prompt_builder.py` (the current flat context
+  builder — read it first), building on the now-existing
+  `hybrid_search_service.py`.
+- Already-built files worth knowing about before touching this phase
+  further: `apps/sidecar/app/services/embedding_service.py`,
+  `search_index_service.py`, `hybrid_search_service.py`,
+  `suggestion_service.py`, `apps/sidecar/app/api/search.py`,
+  `apps/sidecar/app/db/migrations/versions/
+  e51867fcdc66_semantic_search_fts5_and_vec0.py`,
+  `apps/desktop/src/queries/search.ts`+`suggestions.ts`,
+  `apps/desktop/src/components/search/search-dialog.tsx`,
+  `apps/desktop/src/components/canvas/suggestion-panel.tsx`.
+- Team split: backend engineer does the embedding-service swap + backfill
+  re-run + GraphRAG-lite context assembly; UI/UX or security reviewer isn't
+  needed here (no new encryption/export-import/generated-document surface);
+  you (orchestrator) verify the actual demo criteria yourself once real
+  embeddings are in, per this project's own "demo is the only quality gate"
+  rule.
 
 ### 4d. Phase 11 — Full delight + voice + verification iteration (v1.1)
 

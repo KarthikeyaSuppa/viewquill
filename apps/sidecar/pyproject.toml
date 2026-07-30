@@ -29,12 +29,16 @@ dependencies = [
     # Bumped 2026-07-30 (Phase 9 pip-audit pass): 46.0.3 had 4 known advisories
     # (PYSEC-2026-35/36/2141, GHSA-537c-gmf6-5ccf); 48.0.1 is pip-audit's fix version for all four.
     "cryptography==48.0.1",
+    # Phase 10 semantic layer (docs/11-AI-INTELLIGENCE.md §2): vec0 virtual tables for
+    # embeddings. Pure-extension package (Windows wheel, no native model), no LLM involved
+    # here — the actual qwen3-embedding:0.6b call is deferred to the ASUS TUF F15, see
+    # PHASE10.md. Confirmed installable on this restrictive build laptop 2026-07-30.
+    "sqlite-vec==0.1.9",
 ]
 
 # Deferred to their roadmap phases so this install stays model-free
 # (docs/06). Added when their phase begins — NOT installed on the restrictive build laptop:
 #   Phase 2  voice STT: onnx-asr[cpu,hub], sounddevice, silero-vad
-#   Phase 10 semantic:  sqlite-vec
 
 [tool.ruff]
 line-length = 100
