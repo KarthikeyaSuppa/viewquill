@@ -50,6 +50,8 @@ import {
   type BookType,
 } from '@/queries/books'
 import { LottiePlayer } from '@/lib/lottie'
+import { useDelight } from '@/lib/delight'
+import { cn } from '@/lib/utils'
 
 const BOOK_TYPES: { value: BookType; label: string }[] = [
   { value: 'story_book', label: 'Story Book' },
@@ -154,6 +156,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 function BookCard({ book }: { book: Book }) {
   const navigate = useNavigate()
+  const { motionOk } = useDelight()
   const [renameOpen, setRenameOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -168,7 +171,10 @@ function BookCard({ book }: { book: Book }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') navigate(`/book/${book.id}`)
           }}
-          className="glass glass-edge cursor-pointer gap-3 rounded-2xl border-0 py-5 shadow-none transition-transform hover:-translate-y-0.5"
+          className={cn(
+            'glass glass-edge holo-card cursor-pointer gap-3 rounded-2xl border-0 py-5 shadow-none transition-transform hover:-translate-y-0.5',
+            motionOk && 'holo-card--motion',
+          )}
         >
           <CardHeader className="grid-cols-[1fr_auto] items-start px-5">
             <div className="flex flex-col gap-1.5">

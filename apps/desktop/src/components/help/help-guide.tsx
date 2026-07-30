@@ -3,6 +3,7 @@ import {
   BookOpen,
   Compass,
   HelpCircle,
+  Keyboard,
   Lightbulb,
   Map,
   ScrollText,
@@ -312,6 +313,86 @@ function ProfilesSection() {
   )
 }
 
+/** One shortcut row: a key combo badge, a bold name, and a plain-language description. */
+function ShortcutRow({
+  keys,
+  name,
+  children,
+}: {
+  keys: string
+  name: string
+  children: ReactNode
+}) {
+  return (
+    <li className="flex items-start gap-2">
+      <Badge variant="outline" className="mt-0.5 shrink-0 font-mono">
+        {keys}
+      </Badge>
+      <span>
+        <strong className="text-foreground">{name}</strong> — {children}
+      </span>
+    </li>
+  )
+}
+
+/** Keyboard shortcuts — every hotkey currently wired up in the app, grouped by where it
+ * works. Kept in one place (rather than only mentioned in-context, as Reading Comfort's `R`/`F`
+ * still also are above) so a keyboard-first writer can find the full list without hunting
+ * through every other tab. Scope is called out explicitly wherever a shortcut isn't global. */
+function KeyboardShortcutsSection() {
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <P>
+        Quillnight can be driven almost entirely from the keyboard. Here's every shortcut that
+        exists today, grouped by where it works.
+      </P>
+
+      <H3>Search (anywhere in the app)</H3>
+      <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <ShortcutRow keys="Ctrl/Cmd+K" name="Open search">
+          opens the library-wide search dialog from any screen.
+        </ShortcutRow>
+      </ul>
+
+      <Separator />
+
+      <H3>Canvas (while a Book's Canvas tab is open)</H3>
+      <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <ShortcutRow keys="Shift+N" name="Add node">
+          adds a new Scene node to the canvas and moves keyboard focus straight to it.
+        </ShortcutRow>
+        <ShortcutRow keys="Shift+C" name="Connect nodes">
+          with a node focused, starts a connection from it; Tab to another node and press
+          Shift+C (or Enter) again to confirm the connection between them.
+        </ShortcutRow>
+        <ShortcutRow keys="Enter" name="Open node">
+          with a node focused, opens its editor. Also confirms an in-progress connection (see
+          Shift+C above) if one is active.
+        </ShortcutRow>
+        <ShortcutRow keys="Escape" name="Cancel connection">
+          cancels an in-progress Shift+C connection without creating it.
+        </ShortcutRow>
+      </ul>
+
+      <Separator />
+
+      <H3>Reading (only on the Draft tab's manuscript view)</H3>
+      <P>
+        These two only work while you're reading the compiled manuscript on the Draft tab, and
+        never while you're typing anywhere:
+      </P>
+      <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <ShortcutRow keys="R" name="Reading ruler">
+          cycles through off, a grey bar, and a soft shade under your current line.
+        </ShortcutRow>
+        <ShortcutRow keys="F" name="Focus mode">
+          dims everything except the paragraph you're currently reading.
+        </ShortcutRow>
+      </ul>
+    </div>
+  )
+}
+
 /** Tips — a couple of end-to-end mini-workflows tying the sections together. */
 function TipsSection() {
   return (
@@ -354,6 +435,12 @@ const SECTIONS: Section[] = [
   { id: 'codex', label: 'Codex', icon: BookOpen, content: <CodexSection /> },
   { id: 'reading', label: 'Reading Comfort', icon: ScrollText, content: <ReadingComfortSection /> },
   { id: 'profiles', label: 'Profiles', icon: Users, content: <ProfilesSection /> },
+  {
+    id: 'shortcuts',
+    label: 'Keyboard Shortcuts',
+    icon: Keyboard,
+    content: <KeyboardShortcutsSection />,
+  },
   { id: 'tips', label: 'Tips', icon: Lightbulb, content: <TipsSection /> },
 ]
 

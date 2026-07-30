@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { BookOpen, Images as ImagesIcon, X } from 'lucide-react'
+import { BookOpen, Grip, Images as ImagesIcon, LayoutGrid, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,11 +13,13 @@ import {
 } from '@/components/ui/select'
 import { ImageUploader } from '@/components/images/image-uploader'
 import { ImageCard } from '@/components/images/image-card'
+import { GalleryZoomView } from '@/components/images/gallery-zoom-view'
 import { useBookImages, useImages } from '@/queries/images'
 import type { ImageBucket } from '@/lib/api'
 
 type GalleryView = 'pool' | 'book'
 type BucketFilter = ImageBucket | 'all'
+type LayoutMode = 'grid' | 'gallery'
 
 const BUCKET_OPTIONS: { value: BucketFilter; label: string }[] = [
   { value: 'all', label: 'All buckets' },
@@ -35,6 +37,7 @@ const BUCKET_OPTIONS: { value: BucketFilter; label: string }[] = [
  */
 export function ImagesPanel({ bookId }: { bookId: string }) {
   const [view, setView] = useState<GalleryView>('pool')
+  const [layout, setLayout] = useState<LayoutMode>('grid')
   const [search, setSearch] = useState('')
   const [bucket, setBucket] = useState<BucketFilter>('all')
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
@@ -96,29 +99,62 @@ export function ImagesPanel({ bookId }: { bookId: string }) {
           </Button>
         </div>
 
-        {view === 'pool' && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              aria-label="Search images"
-              placeholder="Search name, description, tags…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-56"
-            />
-            <Select value={bucket} onValueChange={(v) => setBucket(v as BucketFilter)}>
-              <SelectTrigger size="sm" className="w-40" aria-label="Bucket filter">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BUCKET_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          {view === 'pool' && (
+            <>
+              <Input
+                aria-label="Search images"
+                placeholder="Search name, description, tags…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-56"
+              />
+              <Select value={bucket} onValueChange={(v) => setBucket(v as BucketFilter)}>
+                <SelectTrigger size="sm" className="w-40" aria-label="Bucket filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BUCKET_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+
+          <div
+            className="glass glass-edge flex items-center gap-1 rounded-full p-1"
+            role="tablist"
+            aria-label="Grid or draggable gallery layout"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant={layout === 'grid' ? 'secondary' : 'ghost'}
+              className="rounded-full"
+              role="tab"
+              aria-selected={layout === 'grid'}
+              onClick={() => setLayout('grid')}
+            >
+              <LayoutGrid className="size-4" />
+              Grid
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={layout === 'gallery' ? 'secondary' : 'ghost'}
+              className="rounded-full"
+              role="tab"
+              aria-selected={layout === 'gallery'}
+              onClick={() => setLayout('gallery')}
+            >
+              <Grip className="size-4" />
+              Gallery
+            </Button>
           </div>
-        )}
+        </div>
       </div>
 
       {view === 'pool' ? (
@@ -162,6 +198,8 @@ export function ImagesPanel({ bookId }: { bookId: string }) {
                   : 'No images yet — upload one above.'
               }
             />
+          ) : layout === 'gallery' ? (
+            <GalleryZoomView images={visiblePoolImages} bookId={bookId} />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {visiblePoolImages.map((image) => (
@@ -181,6 +219,8 @@ export function ImagesPanel({ bookId }: { bookId: string }) {
             <GallerySkeleton />
           ) : !bookImages || bookImages.length === 0 ? (
             <EmptyState message="Nothing would be bundled yet — attach images to this Book, its Scenes, or their Codex entries." />
+          ) : layout === 'gallery' ? (
+            <GalleryZoomView images={bookImages} bookId={bookId} readOnly />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {bookImages.map((image) => (

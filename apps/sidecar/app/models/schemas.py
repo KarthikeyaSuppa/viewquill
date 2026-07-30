@@ -436,6 +436,17 @@ class CodexRelationshipRead(BaseModel):
     description: str | None
 
 
+class CharacterMapResponse(BaseModel):
+    """`GET /books/{book_id}/characters` aggregation (Characters tab: searchable list +
+    relationship graph in one call). ``entries`` are this Book's linked Codex entries
+    filtered to ``entry_type == 'character'``; ``relationships`` are ``codex_relationships``
+    rows fully internal to that entry set — see
+    app/services/codex_service.py's ``list_entries_for_book``/``list_relationships_within_book``."""
+
+    entries: list[CodexEntryRead]
+    relationships: list[CodexRelationshipRead]
+
+
 # ── Codex arc-states (docs/03-DATA-MODEL.md `codex_arc_states`; docs/06 Phase 3 task BE-2) —
 # point-in-time entity snapshots consumed by prompt_builder.build_codex_context's anti-spoiler
 # filter. ``codex_entry_id`` comes from the path (``POST /codex/{entry_id}/arc-states``), not

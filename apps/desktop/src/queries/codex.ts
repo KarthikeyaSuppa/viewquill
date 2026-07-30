@@ -245,3 +245,39 @@ export function useUploadImage() {
 export function useAttachImage() {
   return useUpdateCodex()
 }
+
+// ── Characters tab (PHASE-UI-EFFECTS.md §3): searchable list + relationship map, driven by
+// one aggregation endpoint. ──
+
+/** Response shape for `GET /books/{book_id}/characters` — mirrors `app/models/schemas.py`'s
+ * `CharacterMapResponse` (hand-declared here rather than imported from the generated
+ * `packages/api-types/schema.d.ts`, same precedent as `queries/backups.ts`/
+ * `queries/canvas-templates.ts`/`queries/search.ts`). */
+export interface CharacterMapResponse {
+  entries: CodexEntry[]
+  relationships: CodexRelationship[]
+}
+
+/** Fetches the Characters tab aggregation for one Book: its linked character-type Codex
+ * entries plus every relationship fully internal to that set, in one call. */
+export function useBookCharacters(bookId: string | undefined) {
+  return useQuery({
+    queryKey: ['book-characters', bookId],
+    queryFn: () => api.get<CharacterMapResponse>(`/books/${bookId}/characters`),
+    enabled: !!bookId,
+  })
+}
+
+/** Links a Codex entry onto one Book (`book_codex_links`, distinct from a Scene link) —
+ * used by the Characters tab's "Add character" action so a freshly-created entry shows up
+ * immediately in this Book's character list. */
+export function useLinkCodexToBook(bookId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (entryId: string) => api.post<CodexEntry>(`/codex/${entryId}/books/${bookId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['book-characters', bookId] })
+    },
+    onError: () => toast.error('Could not link the codex entry to this Book'),
+  })
+}

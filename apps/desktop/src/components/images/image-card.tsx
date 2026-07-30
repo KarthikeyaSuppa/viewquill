@@ -35,6 +35,8 @@ import { useDeleteImage, useUpdateImage } from '@/queries/images'
 import { useUpdateBook } from '@/queries/books'
 import { TagEditor } from '@/components/images/tag-editor'
 import { ImageDetail } from '@/components/images/image-detail'
+import { useDelight } from '@/lib/delight'
+import { cn } from '@/lib/utils'
 import type { ImageRead } from '@/lib/api'
 
 /**
@@ -61,6 +63,7 @@ export function ImageCard({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const updateBook = useUpdateBook()
+  const { motionOk } = useDelight()
 
   return (
     <>
@@ -75,7 +78,11 @@ export function ImageCard({
             setDetailOpen(true)
           }
         }}
-        className="glass glass-edge cursor-pointer gap-2 rounded-2xl border-0 p-2.5 shadow-none"
+        className={cn(
+          'glass glass-edge image-shadow-card cursor-pointer gap-2 rounded-2xl border-0 p-2.5 shadow-none',
+          motionOk && 'image-shadow-card--motion',
+        )}
+        style={{ '--image-shadow-src': `url(${imageThumbUrl(image.id)})` } as React.CSSProperties}
       >
         <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
           <img

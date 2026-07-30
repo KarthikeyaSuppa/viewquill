@@ -179,3 +179,54 @@ def test_links_404_for_missing_entry_scene_or_book(client: TestClient) -> None:
     assert client.post(f"/codex/does-not-exist/books/{book_id}").status_code == 404
     assert client.post(f"/codex/{entry_id}/books/does-not-exist").status_code == 404
     assert client.get("/scenes/does-not-exist/codex").status_code == 404
+
+
+def test_book_characters_returns_only_linked_characters_and_internal_relationships(
+    client: TestClient,
+) -> None:
+    book_id = _create_book(client, "Characters Book")
+
+    # Linked characters.
+    ada_id = _create_entry(client, "Ada Linked", "character")
+    grace_id = _create_entry(client, "Grace Linked", "character")
+    # A character that exists but is NOT linked to this book — must be excluded.
+    unlinked_id = _create_entry(client, "Not Linked", "character")
+    # A non-character entry linked to this book — must be excluded from `entries`.
+    location_id = _create_entry(client, "A Linked Location", "location")
+
+    assert client.post(f"/codex/{ada_id}/books/{book_id}").status_code == 201
+    assert client.post(f"/codex/{grace_id}/books/{book_id}").status_code == 201
+    assert client.post(f"/codex/{location_id}/books/{book_id}").status_code == 201
+
+    # Relationship fully internal to the book's linked characters — must be included.
+    internal_rel = client.post(
+        f"/codex/{ada_id}/relationships",
+        json={"to_entry_id": grace_id, "relationship_type": "ally"},
+    )
+    assert internal_rel.status_code == 201
+    internal_rel_id = internal_rel.json()["id"]
+
+    # Relationship pointing at an entry outside the book's linked set — must be excluded.
+    external_rel = client.post(
+        f"/codex/{ada_id}/relationships",
+        json={"to_entry_id": unlinked_id, "relationship_type": "rival"},
+    )
+    assert external_rel.status_code == 201
+
+    resp = client.get(f"/books/{book_id}/characters")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    entry_ids = {e["id"] for e in body["entries"]}
+    assert entry_ids == {ada_id, grace_id}
+    assert unlinked_id not in entry_ids
+    assert location_id not in entry_ids
+    assert all(e["entry_type"] == "character" for e in body["entries"])
+
+    rel_ids = {r["id"] for r in body["relationships"]}
+    assert rel_ids == {internal_rel_id}
+
+
+def test_book_characters_404s_for_missing_book(client: TestClient) -> None:
+    resp = client.get("/books/does-not-exist/characters")
+    assert resp.status_code == 404

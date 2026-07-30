@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import get_db
 from app.models.schemas import (
+    CharacterMapResponse,
     CodexArcStateCreate,
     CodexArcStateRead,
     CodexEntryCreate,
@@ -143,6 +144,21 @@ def link_book(entry_id: str, book_id: str, db: Session = Depends(get_db)) -> Cod
 def unlink_book(entry_id: str, book_id: str, db: Session = Depends(get_db)) -> None:
     if not codex_service.unlink_book(db, entry_id, book_id):
         raise HTTPException(status_code=404, detail="Codex entry is not linked to this Book")
+
+
+@router.get("/books/{book_id}/characters", response_model=CharacterMapResponse)
+def get_book_characters(book_id: str, db: Session = Depends(get_db)) -> CharacterMapResponse:
+    """Characters tab aggregation: this Book's linked character entries plus every
+    relationship fully internal to that set, in one call (PHASE-UI-EFFECTS.md §3)."""
+    _require_book(db, book_id)
+    entries = codex_service.list_entries_for_book(db, book_id, entry_type="character")
+    relationships = codex_service.list_relationships_within_book(db, book_id)
+    return CharacterMapResponse(
+        entries=[CodexEntryRead.model_validate(entry) for entry in entries],
+        relationships=[
+            CodexRelationshipRead.model_validate(relationship) for relationship in relationships
+        ],
+    )
 
 
 # ── Entity relationships (Codex entry <-> Codex entry) ─────────────────────────

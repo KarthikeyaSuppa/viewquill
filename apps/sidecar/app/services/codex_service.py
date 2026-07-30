@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.base import new_uuid, utcnow_iso
@@ -183,6 +183,39 @@ def unlink_book(db: Session, entry_id: str, book_id: str) -> bool:
     db.delete(link)
     db.commit()
     return True
+
+
+def list_entries_for_book(
+    db: Session, book_id: str, entry_type: str | None = None
+) -> list[CodexEntry]:
+    """Codex entries linked to ``book_id`` via ``book_codex_links``, optionally filtered
+    by ``entry_type``. Used for the Characters tab aggregation endpoint (`GET
+    /books/{book_id}/characters`, docs/06 Phase 3 Characters follow-up) and any other
+    Book-scoped Codex view."""
+    stmt = select(CodexEntry).join(
+        BookCodexLink, BookCodexLink.codex_entry_id == CodexEntry.id
+    ).where(BookCodexLink.book_id == book_id)
+    if entry_type is not None:
+        stmt = stmt.where(CodexEntry.entry_type == entry_type)
+    return list(db.execute(stmt).scalars())
+
+
+def list_relationships_within_book(db: Session, book_id: str) -> list[CodexRelationship]:
+    """``codex_relationships`` rows fully internal to ``book_id`` — both ``from_entry_id``
+    and ``to_entry_id`` must be Codex entries linked to this Book. A relationship pointing
+    at an entry outside this Book's linked set is excluded (that target isn't part of this
+    Book's character map)."""
+    book_entry_ids = select(BookCodexLink.codex_entry_id).where(BookCodexLink.book_id == book_id)
+    return list(
+        db.execute(
+            select(CodexRelationship).where(
+                and_(
+                    CodexRelationship.from_entry_id.in_(book_entry_ids),
+                    CodexRelationship.to_entry_id.in_(book_entry_ids),
+                )
+            )
+        ).scalars()
+    )
 
 
 # ── Entity relationships (Codex entry <-> Codex entry; docs/03-DATA-MODEL.md

@@ -55,6 +55,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backups/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backup Status
+         * @description ``{last_backup_at, next_backup_at}`` for a frontend backup-staleness nudge (Phase 9
+         *     task 2) -- both ``None`` if no backup has ever run yet. Separate from ``GET /backups``
+         *     (a list of per-snapshot records) since this is a single derived summary, not a list.
+         */
+        get: operations["get_backup_status_backups_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backups/{name}/restore": {
         parameters: {
             query?: never;
@@ -344,6 +366,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/books/{book_id}/canvas/apply-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Canvas Template */
+        post: operations["apply_canvas_template_books__book_id__canvas_apply_template_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/books/{book_id}/scenes/{scene_id}": {
         parameters: {
             query?: never;
@@ -518,6 +557,27 @@ export interface paths {
         post: operations["link_book_codex__entry_id__books__book_id__post"];
         /** Unlink Book */
         delete: operations["unlink_book_codex__entry_id__books__book_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/characters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Book Characters
+         * @description Characters tab aggregation: this Book's linked character entries plus every
+         *     relationship fully internal to that set, in one call (PHASE-UI-EFFECTS.md §3).
+         */
+        get: operations["get_book_characters_books__book_id__characters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1264,6 +1324,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Backfill */
+        post: operations["backfill_search_backfill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Hybrid FTS5 + vector search (app/services/hybrid_search_service.py) over Scene/
+         *     CodexEntry rows, fused via Reciprocal Rank Fusion. Not Book-scoped — see that module's
+         *     docstring for why. ``q=""`` (or omitted) returns ``[]`` rather than erroring, matching
+         *     a search box with nothing typed into it yet.
+         */
+        get: operations["search_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search/scenes/{scene_id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scene Suggestions
+         * @description Read-only suggestions for one Scene (Phase 10 task 5): Codex entries it mentions/
+         *     resembles but isn't linked to yet, and other Scenes it closely resembles (possible
+         *     near-duplicates). Kept in `search.py` rather than `scenes.py` since both lists are built
+         *     entirely on `hybrid_search_service`/`suggestion_service` — no other scene-route
+         *     dependency — and this is where the rest of the Phase 10 search surface already lives.
+         *
+         *     Suggestions only, never auto-applied — see `suggestion_service`'s module docstring.
+         */
+        get: operations["scene_suggestions_search_scenes__scene_id__suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -1285,6 +1411,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApplyCanvasTemplateRequest
+         * @description Seed a Book's (blank) canvas with a starter template — see
+         *     ``services/canvas_template_service.py`` for the available ``template_key``s.
+         */
+        ApplyCanvasTemplateRequest: {
+            /** Template Key */
+            template_key: string;
+        };
         /**
          * AssignSceneRequest
          * @description Partial update — only the fields provided are changed; other fields on the same
@@ -1484,6 +1619,20 @@ export interface components {
             /** Order Index */
             order_index?: number | null;
         };
+        /**
+         * CharacterMapResponse
+         * @description `GET /books/{book_id}/characters` aggregation (Characters tab: searchable list +
+         *     relationship graph in one call). ``entries`` are this Book's linked Codex entries
+         *     filtered to ``entry_type == 'character'``; ``relationships`` are ``codex_relationships``
+         *     rows fully internal to that entry set — see
+         *     app/services/codex_service.py's ``list_entries_for_book``/``list_relationships_within_book``.
+         */
+        CharacterMapResponse: {
+            /** Entries */
+            entries: components["schemas"]["CodexEntryRead"][];
+            /** Relationships */
+            relationships: components["schemas"]["CodexRelationshipRead"][];
+        };
         /** CodexArcStateCreate */
         CodexArcStateCreate: {
             /** Book Id */
@@ -1571,6 +1720,17 @@ export interface components {
             } | null;
             /** Primary Image Id */
             primary_image_id?: string | null;
+        };
+        /** CodexLinkSuggestion */
+        CodexLinkSuggestion: {
+            /** Codex Entry Id */
+            codex_entry_id: string;
+            /** Name */
+            name: string;
+            /** Snippet */
+            snippet: string | null;
+            /** Score */
+            score: number;
         };
         /**
          * CodexRelationshipCreate
@@ -1994,6 +2154,13 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** SceneSuggestionsResponse */
+        SceneSuggestionsResponse: {
+            /** Codex Link Suggestions */
+            codex_link_suggestions: components["schemas"]["CodexLinkSuggestion"][];
+            /** Similar Scenes */
+            similar_scenes: components["schemas"]["SimilarSceneSuggestion"][];
+        };
         /**
          * SceneUpdate
          * @description Partial update — only the fields provided are changed.
@@ -2063,6 +2230,31 @@ export interface components {
             /** Order Index */
             order_index?: number | null;
         };
+        /** SearchBackfillResponse */
+        SearchBackfillResponse: {
+            /** Scenes Indexed */
+            scenes_indexed: number;
+            /** Codex Entries Indexed */
+            codex_entries_indexed: number;
+        };
+        /** SearchResult */
+        SearchResult: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "scene" | "codex_entry";
+            /** Entity Id */
+            entity_id: string;
+            /** Title */
+            title: string;
+            /** Snippet */
+            snippet: string | null;
+            /** Score */
+            score: number;
+            /** Book Ids */
+            book_ids?: string[];
+        };
         /**
          * SettingsResponse
          * @description All settings, merged over the built-in defaults so the client always gets a full set.
@@ -2082,6 +2274,17 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+        };
+        /** SimilarSceneSuggestion */
+        SimilarSceneSuggestion: {
+            /** Scene Id */
+            scene_id: string;
+            /** Title */
+            title: string;
+            /** Snippet */
+            snippet: string | null;
+            /** Score */
+            score: number;
         };
         /** StructureTemplateRead */
         StructureTemplateRead: {
@@ -2224,6 +2427,28 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+        };
+    };
+    get_backup_status_backups_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -3035,6 +3260,41 @@ export interface operations {
             };
         };
     };
+    apply_canvas_template_books__book_id__canvas_apply_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCanvasTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_scene_to_canvas_books__book_id__scenes__scene_id__post: {
         parameters: {
             query?: never;
@@ -3635,6 +3895,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_book_characters_books__book_id__characters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterMapResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -5177,6 +5468,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_search_backfill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchBackfillResponse"];
+                };
+            };
+        };
+    };
+    search_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                entity_type?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scene_suggestions_search_scenes__scene_id__suggestions_get: {
+        parameters: {
+            query?: {
+                codex_limit?: number;
+                similar_scene_limit?: number;
+            };
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -15,6 +15,7 @@ import { useLogout } from '@/queries/profiles'
 import { useOnboardingWizardStore } from '@/stores/onboarding'
 import { useAuthStore } from '@/stores/auth'
 import { cn } from '@/lib/utils'
+import { useIndicatorRefs, WobblyIndicator } from '@/components/wobbly-indicator'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Library', icon: Library, end: true },
@@ -43,6 +44,17 @@ export function AppShell() {
   const avatar = resolveAvatar(currentUser?.avatar)
 
   const [searchOpen, setSearchOpen] = useState(false)
+
+  // Wobbly underline (PHASE-UI-EFFECTS.md #9) — a sliding accent bar tracking whichever
+  // NAV_ITEMS entry matches the current route. Computed the same way `NavLink`'s own
+  // `isActive` would (via `end`), since the indicator needs to know *which* item is active,
+  // not just style it reactively like `NavLink`'s className callback does.
+  const navRef = useRef<HTMLElement | null>(null)
+  const { refs: navItemRefs, setRef: setNavItemRef } = useIndicatorRefs<string>()
+  const activeNavTo =
+    NAV_ITEMS.find(({ to, end }) =>
+      end ? location.pathname === to : location.pathname === to || location.pathname.startsWith(`${to}/`),
+    )?.to ?? null
 
   // First-run gate (docs/10 §7): once settings have loaded, auto-open the wizard exactly
   // once if onboarding hasn't been completed yet.
@@ -94,12 +106,13 @@ export function AppShell() {
           <span className="text-lg font-semibold tracking-tight">Quillnight</span>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1">
+        <nav ref={navRef} className="relative flex flex-1 flex-col gap-1">
           {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
+              ref={setNavItemRef(to)}
               className={({ isActive }) =>
                 cn(
                   NAV_ITEM_CLASS,
@@ -112,6 +125,15 @@ export function AppShell() {
               {label}
             </NavLink>
           ))}
+          {activeNavTo && (
+            <WobblyIndicator
+              containerRef={navRef}
+              activeElement={navItemRefs.current.get(activeNavTo) ?? null}
+              activeKey={activeNavTo}
+              orientation="vertical"
+              className="rounded-full bg-primary"
+            />
+          )}
 
           <button
             type="button"

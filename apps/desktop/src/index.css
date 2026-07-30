@@ -257,6 +257,147 @@
   animation: ink-edge-flow 0.9s linear infinite;
 }
 
+/* Wobbly underline tab bar (PHASE-UI-EFFECTS.md #9, `book-screen.tsx`) — swaps the default
+   shadcn Tabs pill active-treatment for a bare label + a `<WobblyIndicator>` sliding
+   underline, so there's exactly one active-indicator, not two competing ones. Scoped to
+   `.wobbly-tabs` (higher specificity than the plain Tailwind utility classes it overrides)
+   so every other `<TabsList>` in the app (Settings screen, Help guide, Codex dialog) keeps
+   the default pill treatment untouched. */
+.wobbly-tabs [data-slot='tabs-trigger'] {
+  background: transparent;
+  box-shadow: none;
+}
+.wobbly-tabs [data-slot='tabs-trigger'][data-state='active'] {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+/* Sliding pill selector for the Book screen's card-style toggle (PHASE-UI-EFFECTS.md #3),
+   `book-screen.tsx`. Unlike `.wobbly-tabs`'s `<WobblyIndicator>` (which measures
+   `getBoundingClientRect` on every change), this pill's position/size comes entirely from
+   CSS Anchor Positioning: each radio's `<label>` is an anchor (`anchor-name`, keyed off
+   `data-card-style`), and the pill switches which anchor it targets via a plain className
+   swap (`--rectangle`/`--square`) driven by the `cardStyle` store value, then `anchor()`
+   pins all four edges to that anchor's box so the pill exactly matches the active label's
+   size/position with zero JS measurement. Safe to use without a non-anchor-positioning
+   fallback here — this app's shell is WebView2/Chromium, which has shipped CSS Anchor
+   Positioning unflagged since Chrome 125. */
+.card-style-toggle {
+  position: relative;
+}
+.card-style-toggle label[data-card-style='rectangle'] {
+  anchor-name: --qn-card-style-rectangle;
+}
+.card-style-toggle label[data-card-style='square'] {
+  anchor-name: --qn-card-style-square;
+}
+.card-style-pill {
+  position: absolute;
+  z-index: 0;
+  top: anchor(top);
+  bottom: anchor(bottom);
+  left: anchor(left);
+  right: anchor(right);
+  /* Same overshoot "wobble" easing as `WobblyIndicator` for a consistent feel. */
+  transition:
+    left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    right 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.card-style-pill--rectangle {
+  position-anchor: --qn-card-style-rectangle;
+}
+.card-style-pill--square {
+  position-anchor: --qn-card-style-square;
+}
+/* Gated by `useDelight().motionOk` (calm / prefers-reduced-motion) — instant snap, no slide. */
+.card-style-pill--instant {
+  transition: none;
+}
+
+/* Holographic foil hover (PHASE-UI-EFFECTS.md #4), `library-screen.tsx`'s Book cards.
+   `.holo-card::after` is a conic-gradient foil sheet built from the existing `--chart-*`
+   tokens (already tuned per-theme, so the foil never hardcodes a color that would clash in
+   Night) laid over the card with `mix-blend-mode: color-dodge` for the iridescent look.
+   Hidden (`opacity: 0`) at rest, revealed on both `:hover` AND `:focus-visible` — a
+   keyboard-focused card must get the same feedback a mouse-hovered one does, not silence
+   (the risk flagged in PHASE-UI-EFFECTS.md's effect #4 research). The gradient itself is
+   static (a fixed conic sweep, no animation) so it's safe to reveal unconditionally; only
+   the `hue-rotate` sweep is genuine animation, and that's opt-in via `.holo-card--motion`
+   (added in `library-screen.tsx` only when `useDelight().motionOk`), exactly like
+   `.card-style-pill--instant` above. */
+.holo-card {
+  position: relative;
+  overflow: hidden;
+}
+.holo-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: conic-gradient(
+    from 180deg at 50% 50%,
+    var(--chart-1),
+    var(--chart-4),
+    var(--chart-3),
+    var(--chart-2),
+    var(--chart-5),
+    var(--chart-1)
+  );
+  mix-blend-mode: color-dodge;
+  transition: opacity 0.3s ease;
+}
+.holo-card:hover::after,
+.holo-card:focus-visible::after {
+  opacity: 0.32;
+}
+@keyframes holo-hue-shift {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+.holo-card--motion:hover::after,
+.holo-card--motion:focus-visible::after {
+  animation: holo-hue-shift 4s linear infinite;
+}
+
+/* Color-matched blurred drop-shadow (PHASE-UI-EFFECTS.md #7), `image-card.tsx`. `::before`
+   paints a blurred duplicate of the card's own thumbnail (its `background-image` set inline
+   from `--image-shadow-src`, per-card since every image differs) offset behind the card, so
+   the shadow reads as "cast by this image" rather than a generic drop-shadow. Purely static
+   — no animation to gate. The optional hover lift IS gated: `.image-shadow-card--motion`
+   (added only when `useDelight().motionOk`) is what enables the `transform`/`opacity`
+   transition on hover; without it the hover state still changes but snaps instantly. */
+.image-shadow-card {
+  position: relative;
+  isolation: isolate;
+}
+.image-shadow-card::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  z-index: -1;
+  border-radius: inherit;
+  background-image: var(--image-shadow-src);
+  background-size: cover;
+  background-position: center;
+  filter: blur(18px) saturate(160%) brightness(0.85);
+  opacity: 0.5;
+  transform: translateY(10px) scale(0.92);
+}
+.image-shadow-card--motion::before {
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+.image-shadow-card:hover::before {
+  opacity: 0.68;
+  transform: translateY(14px) scale(0.95);
+}
+
 /* Respect reduced-motion globally as a backstop (docs/10). */
 @media (prefers-reduced-motion: reduce) {
   *,
