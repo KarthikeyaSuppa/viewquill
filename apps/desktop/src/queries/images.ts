@@ -224,3 +224,25 @@ export function useEntityImages(entityType: EntityImageEntityType | undefined, e
     enabled: !!entityType && !!entityId,
   })
 }
+
+/** Reorders the images attached to one entity — body is the full desired order of image ids
+ * (docs/06 PHASE-UI-EFFECTS-2 B2). Any currently-attached image left out of the list has its
+ * order reset server-side to the recency-based fallback (see
+ * `entity_images_service.reorder_for_entity`); the response is the updated ordered list, but
+ * we just invalidate `useEntityImages` and let it refetch, same convention as the rest of
+ * this file (`useReorderElements` in `queries/screenplay.ts` does the same for the sibling
+ * screenplay-elements list). Passing the first image's id first makes that image the cover
+ * (`nodes.tsx` picks `images?.[0]` as the cover thumbnail). */
+export function useReorderEntityImages(entityType: EntityImageEntityType | undefined, entityId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (imageIds: string[]) =>
+      api.post<ImageRead[]>(`/entities/${entityType}/${entityId}/images/reorder`, {
+        image_ids: imageIds,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['entity-images', entityType, entityId] })
+    },
+    onError: () => toast.error('Could not reorder the images'),
+  })
+}

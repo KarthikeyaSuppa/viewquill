@@ -289,6 +289,11 @@ class EntityImage(Base):
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Nullable "which one is primary / thumbnail-strip order" position (PHASE-UI-EFFECTS-2.md
+    # §4 B2). NULL (every existing row, until a user explicitly reorders) means "no explicit
+    # order" and falls back to entity_images_service.list_for_entity's original
+    # created_at DESC, id DESC ordering — see that function's ORDER BY for the exact rule.
+    order_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 # ── Continuity flags (severity-tagged) ────────────────────────────────────────

@@ -200,6 +200,25 @@ def list_entries_for_book(
     return list(db.execute(stmt).scalars())
 
 
+def list_scene_links_for_entries(db: Session, entry_ids: list[str]) -> dict[str, list[str]]:
+    """``scene_id``s linked to each of ``entry_ids`` via ``codex_scene_links``, keyed by
+    ``codex_entry_id``. Every id in ``entry_ids`` is present in the result (mapped to ``[]``
+    if that entry has no scene links) so callers never have to guess between "no links" and
+    "key missing" (PHASE-UI-EFFECTS-2.md §3/§5 task 1 — feeds the Characters Timeline view).
+    """
+    scene_links: dict[str, list[str]] = {entry_id: [] for entry_id in entry_ids}
+    if not entry_ids:
+        return scene_links
+    rows = db.execute(
+        select(CodexSceneLink.codex_entry_id, CodexSceneLink.scene_id).where(
+            CodexSceneLink.codex_entry_id.in_(entry_ids)
+        )
+    ).all()
+    for codex_entry_id, scene_id in rows:
+        scene_links[codex_entry_id].append(scene_id)
+    return scene_links
+
+
 def list_relationships_within_book(db: Session, book_id: str) -> list[CodexRelationship]:
     """``codex_relationships`` rows fully internal to ``book_id`` — both ``from_entry_id``
     and ``to_entry_id`` must be Codex entries linked to this Book. A relationship pointing

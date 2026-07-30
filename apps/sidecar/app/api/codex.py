@@ -153,11 +153,13 @@ def get_book_characters(book_id: str, db: Session = Depends(get_db)) -> Characte
     _require_book(db, book_id)
     entries = codex_service.list_entries_for_book(db, book_id, entry_type="character")
     relationships = codex_service.list_relationships_within_book(db, book_id)
+    scene_links = codex_service.list_scene_links_for_entries(db, [entry.id for entry in entries])
     return CharacterMapResponse(
         entries=[CodexEntryRead.model_validate(entry) for entry in entries],
         relationships=[
             CodexRelationshipRead.model_validate(relationship) for relationship in relationships
         ],
+        scene_links=scene_links,
     )
 
 

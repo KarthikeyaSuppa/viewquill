@@ -69,8 +69,8 @@ interface BaseNodeConfig {
 }
 
 /** The node-card redesign (docs/10 node canvas redesign, task FE-B): a main image area
- * (the scene's `finalized_scene`-bucket attachment if it has one, else its newest attached
- * image, else the original dashed-border placeholder), a 3-button action row below the
+ * (the scene's first attached image per the backend's order — explicit `order_index` first,
+ * else newest — else the original dashed-border placeholder), a 3-button action row below the
  * card (Enhance/Duplicate/⋯), and — beside the card — a vertical strip of up to 4 more
  * attached-image thumbnails. Only Duplicate and the ⋯ trigger stop click propagation;
  * everything else (header, image, title, description, thumbnail strip) lets the click
@@ -86,12 +86,13 @@ function BaseNode(
   const deleteScene = useDeleteScene()
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  // `useEntityImages`'s `ImageRead[]` has no per-link `role` — the closest analog for
-  // "the finalized one" is the image's own `bucket` (a scene's finalized art lives in the
-  // `finalized_scene` bucket per `SceneImagesSection`'s upload/attach flow in
-  // `node-editor.tsx`). Falls back to the newest attachment (the list is already ordered
-  // newest-first by the sidecar), then to the placeholder if nothing's attached.
-  const mainImage = images?.find((image) => image.bucket === 'finalized_scene') ?? images?.[0] ?? null
+  // `useEntityImages` hits `GET /entities/scene/{id}/images`, which the sidecar's
+  // `entity_images_service.list_for_entity` orders by `order_index IS NULL, order_index ASC,
+  // created_at DESC, id DESC` — explicitly-ordered images (via the reorder endpoint) come
+  // first in that order, everything else falls back to recency. So the first item is simply
+  // whatever the user (or, absent any ordering, recency) says is the cover; no bucket
+  // heuristic needed. Falls back to the placeholder if nothing's attached.
+  const mainImage = images?.[0] ?? null
   const thumbnails = (images ?? []).slice(0, 4)
   const aspectClass = cardStyle === 'square' ? 'aspect-square' : 'aspect-[16/10]'
 

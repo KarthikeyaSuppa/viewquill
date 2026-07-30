@@ -28,6 +28,7 @@ from app.db.base import get_db
 from app.models.schemas import (
     EntityImageLinkCreate,
     EntityImageRead,
+    EntityImageReorderRequest,
     ImageRead,
     ImageTagAdd,
     ImageUpdate,
@@ -303,6 +304,38 @@ def list_entity_images(
     entity_type: str, entity_id: str, db: Session = Depends(get_db)
 ) -> list[ImageRead]:
     try:
+        images = entity_images_service.list_for_entity(
+            db, entity_type=entity_type, entity_id=entity_id
+        )
+    except ValueError as exc:
+        if str(exc) == "BAD_ENTITY_TYPE":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Unsupported entity_type.",
+            ) from exc
+        raise
+    return [images_service.to_image_read(db, image) for image in images]
+
+
+@entities_router.post(
+    "/{entity_type}/{entity_id}/images/reorder", response_model=list[ImageRead]
+)
+def reorder_entity_images(
+    entity_type: str,
+    entity_id: str,
+    payload: EntityImageReorderRequest,
+    db: Session = Depends(get_db),
+) -> list[ImageRead]:
+    """Sets the display order of images attached to (``entity_type``, ``entity_id``) —
+    ``payload.image_ids`` is the full desired order; any currently-attached image left out
+    of that list has its order reset to the recency-based fallback (see
+    ``entity_images_service.reorder_for_entity``). Returns the updated list, same shape as
+    ``GET /entities/{entity_type}/{entity_id}/images``, so the frontend can just replace its
+    local list with the response rather than re-fetching separately."""
+    try:
+        entity_images_service.reorder_for_entity(
+            db, entity_type=entity_type, entity_id=entity_id, image_ids=payload.image_ids
+        )
         images = entity_images_service.list_for_entity(
             db, entity_type=entity_type, entity_id=entity_id
         )

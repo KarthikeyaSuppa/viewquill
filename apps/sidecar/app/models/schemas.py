@@ -337,6 +337,17 @@ class EntityImageRead(BaseModel):
     role: str | None
 
 
+class EntityImageReorderRequest(BaseModel):
+    """Body for ``POST /entities/{entity_type}/{entity_id}/images/reorder`` (PHASE-UI-
+    EFFECTS-2.md §4 B2 / §5 task 3). ``image_ids`` is the full desired ORDER of images
+    currently attached to this entity — position in the list becomes ``EntityImage.
+    order_index``; any currently-attached image omitted from this list has its
+    ``order_index`` reset to ``NULL`` (falls back to recency ordering), see
+    ``entity_images_service.reorder_for_entity``."""
+
+    image_ids: list[str] = Field(default_factory=list)
+
+
 # ── Structure templates (docs/03-DATA-MODEL.md `structure_templates`; docs/06 Phase 4
 # task BE-2) — built-in seed data (Three-Act, Hero's Journey, Freeform), read-only over
 # the wire. ``applicable_book_types`` of ``None`` means "applies to every book type". ──
@@ -440,11 +451,16 @@ class CharacterMapResponse(BaseModel):
     """`GET /books/{book_id}/characters` aggregation (Characters tab: searchable list +
     relationship graph in one call). ``entries`` are this Book's linked Codex entries
     filtered to ``entry_type == 'character'``; ``relationships`` are ``codex_relationships``
-    rows fully internal to that entry set — see
-    app/services/codex_service.py's ``list_entries_for_book``/``list_relationships_within_book``."""
+    rows fully internal to that entry set; ``scene_links`` maps each entry's ``id`` to the
+    ``scene_id``s it's linked to via ``codex_scene_links`` (PHASE-UI-EFFECTS-2.md §3/§5 task
+    1 — feeds the Characters Timeline view without a second round-trip; every entry id is
+    present, mapped to ``[]`` when that character has no scene links) — see
+    app/services/codex_service.py's
+    ``list_entries_for_book``/``list_relationships_within_book``/``list_scene_links_for_entries``."""
 
     entries: list[CodexEntryRead]
     relationships: list[CodexRelationshipRead]
+    scene_links: dict[str, list[str]]
 
 
 # ── Codex arc-states (docs/03-DATA-MODEL.md `codex_arc_states`; docs/06 Phase 3 task BE-2) —

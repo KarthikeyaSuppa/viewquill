@@ -252,10 +252,14 @@ export function useAttachImage() {
 /** Response shape for `GET /books/{book_id}/characters` — mirrors `app/models/schemas.py`'s
  * `CharacterMapResponse` (hand-declared here rather than imported from the generated
  * `packages/api-types/schema.d.ts`, same precedent as `queries/backups.ts`/
- * `queries/canvas-templates.ts`/`queries/search.ts`). */
+ * `queries/canvas-templates.ts`/`queries/search.ts`). `scene_links` (added
+ * PHASE-UI-EFFECTS-2.md §5 task 1) maps each entry's `id` (the `codex_entry_id` side of
+ * `codex_scene_links`) to the list of `scene_id`s it's linked to — every entry from
+ * `entries` is present as a key, with an empty array when it has no scene links. */
 export interface CharacterMapResponse {
   entries: CodexEntry[]
   relationships: CodexRelationship[]
+  scene_links: Record<string, string[]>
 }
 
 /** Fetches the Characters tab aggregation for one Book: its linked character-type Codex

@@ -198,6 +198,12 @@ def test_book_characters_returns_only_linked_characters_and_internal_relationshi
     assert client.post(f"/codex/{grace_id}/books/{book_id}").status_code == 201
     assert client.post(f"/codex/{location_id}/books/{book_id}").status_code == 201
 
+    # Ada is linked to two scenes; Grace has zero scene links.
+    scene_one_id = _create_scene(client, "Scene One")
+    scene_two_id = _create_scene(client, "Scene Two")
+    assert client.post(f"/codex/{ada_id}/scenes/{scene_one_id}").status_code == 201
+    assert client.post(f"/codex/{ada_id}/scenes/{scene_two_id}").status_code == 201
+
     # Relationship fully internal to the book's linked characters — must be included.
     internal_rel = client.post(
         f"/codex/{ada_id}/relationships",
@@ -225,6 +231,12 @@ def test_book_characters_returns_only_linked_characters_and_internal_relationshi
 
     rel_ids = {r["id"] for r in body["relationships"]}
     assert rel_ids == {internal_rel_id}
+
+    # scene_links is additive: keyed by codex entry id, every linked character present,
+    # empty list (not missing/null) for a character with zero scene links.
+    assert set(body["scene_links"]) == {ada_id, grace_id}
+    assert set(body["scene_links"][ada_id]) == {scene_one_id, scene_two_id}
+    assert body["scene_links"][grace_id] == []
 
 
 def test_book_characters_404s_for_missing_book(client: TestClient) -> None:

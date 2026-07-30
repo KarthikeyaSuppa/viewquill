@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { List, Network, Plus, Search, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CalendarClock, List, Network, Plus, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,16 +7,24 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { useBookCharacters, useCreateCodex, useLinkCodexToBook } from '@/queries/codex'
 import { useBooks } from '@/queries/books'
+import { useCanvas } from '@/queries/canvas'
+import { useTimeline } from '@/queries/outline'
 import { CodexEntryDialog } from '@/components/codex/codex-entry-dialog'
 import { CharacterRelationshipGraph } from '@/components/codex/character-relationship-graph'
+import { CharacterSceneTimeline } from '@/components/codex/character-scene-timeline'
+import { buildRows } from '@/components/outline/timeline-view'
+import type { OutlineScene } from '@/components/outline/beat-board'
 import type { CodexEntry } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useDelight } from '@/lib/delight'
 
 /** View-mode seam for the relationship-graph "map" view (PHASE-UI-EFFECTS.md §3 task 4,
- * React Flow over `codex_relationships`): `'list'` is the searchable card grid, `'map'`
- * renders `CharacterRelationshipGraph` below. Both branches share the same `filtered`
- * entries and the same `editingEntry`/`CodexEntryDialog` state. */
-type CharactersViewMode = 'list' | 'map'
+ * React Flow over `codex_relationships`) and the Gantt-style "timeline" view
+ * (PHASE-UI-EFFECTS-2.md §3/§5 task 8): `'list'` is the searchable card grid, `'map'` renders
+ * `CharacterRelationshipGraph`, `'timeline'` renders `CharacterSceneTimeline`. All three
+ * branches share the same `filtered` entries and the same `editingEntry`/`CodexEntryDialog`
+ * state. */
+type CharactersViewMode = 'list' | 'map' | 'timeline'
 
 /** Case-insensitive substring match against name or summary — the whole small per-Book
  * character set is already in memory, so this runs on every keystroke with no debounce
@@ -25,6 +33,99 @@ function matchesQuery(entry: CodexEntry, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
   return entry.name.toLowerCase().includes(q) || (entry.summary?.toLowerCase().includes(q) ?? false)
+}
+
+const ALPHABET = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))
+
+/** First letter of a name, uppercased, bucketed to `'#'` for anything that doesn't start
+ * with A-Z (numerals, punctuation) — those entries still render, just outside the rail. */
+function letterBucket(name: string): string {
+  const ch = name.trim().charAt(0).toUpperCase()
+  return ch >= 'A' && ch <= 'Z' ? ch : '#'
+}
+
+/** Groups `entries` into contiguous per-first-letter sections, sorted case-insensitively by
+ * name with the `'#'` bucket pinned last regardless of locale. The A-Z index rail (§2 task 9,
+ * PHASE-UI-EFFECTS-2.md §2 item 1) only makes sense against an alphabetized list — "jump to
+ * the first name starting with C" and "highlight the letter currently in view" both assume
+ * same-letter entries are contiguous — so List view sorts here; Map/Timeline keep the
+ * original (unsorted) `filtered` order since neither has a comparable per-letter concept. */
+function groupByLetter(entries: CodexEntry[]): [string, CodexEntry[]][] {
+  const sorted = [...entries].sort((a, b) => {
+    const bucketA = letterBucket(a.name)
+    const bucketB = letterBucket(b.name)
+    if (bucketA !== bucketB) {
+      if (bucketA === '#') return 1
+      if (bucketB === '#') return -1
+      return bucketA < bucketB ? -1 : 1
+    }
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  })
+  const groups: [string, CodexEntry[]][] = []
+  for (const entry of sorted) {
+    const letter = letterBucket(entry.name)
+    const last = groups[groups.length - 1]
+    if (last && last[0] === letter) last[1].push(entry)
+    else groups.push([letter, [entry]])
+  }
+  return groups
+}
+
+/**
+ * Vertical A-Z jump rail for the Characters List view (PHASE-UI-EFFECTS-2.md §2 item 1, §5
+ * task 9). Every letter renders as a real `<button>` (never hover-only) so it's reachable via
+ * Tab/Enter; letters absent from the current (already search-filtered) results are `disabled`
+ * and dimmed rather than removed, matching the common "grayed-out unavailable index letter"
+ * pattern so the rail's shape doesn't jump around as the user types a filter.
+ *
+ * The highlight itself (`active === letter`) always applies instantly — only the CSS
+ * `transition-colors` on top of it is gated by `motionOk`, per `wobbly-indicator.tsx`'s
+ * convention: decoration is gated, the affordance (which letter is current) never is.
+ */
+function AlphabetIndexRail({
+  available,
+  active,
+  motionOk,
+  onJump,
+}: {
+  available: Set<string>
+  active: string | null
+  motionOk: boolean
+  onJump: (letter: string) => void
+}) {
+  return (
+    <div
+      className="glass glass-edge sticky top-4 flex max-h-[70vh] flex-col items-center gap-0.5 self-start overflow-y-auto rounded-full px-1 py-2"
+      role="navigation"
+      aria-label="Jump to character name"
+    >
+      {ALPHABET.map((letter) => {
+        const isAvailable = available.has(letter)
+        const isActive = isAvailable && active === letter
+        return (
+          <button
+            key={letter}
+            type="button"
+            disabled={!isAvailable}
+            onClick={() => onJump(letter)}
+            aria-label={`Jump to names starting with ${letter}`}
+            aria-current={isActive ? 'true' : undefined}
+            className={cn(
+              'flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-medium',
+              'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+              isAvailable
+                ? 'text-foreground/70 hover:bg-accent'
+                : 'cursor-default text-muted-foreground/30',
+              isActive && 'bg-primary/15 font-semibold text-primary',
+              motionOk && 'transition-colors duration-150',
+            )}
+          >
+            {letter}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 /**
@@ -39,6 +140,16 @@ function matchesQuery(entry: CodexEntry, query: string): boolean {
  * Accessibility: labeled search input, cards are native buttons (keyboard-navigable via
  * Tab/Enter with no extra wiring), and loading/empty/filtered-count states are announced
  * via a visually-hidden `role="status"` region, mirroring `backup-nudge.tsx`/`search-dialog.tsx`.
+ *
+ * List view also carries an A-Z index rail (`AlphabetIndexRail`, PHASE-UI-EFFECTS-2.md §2
+ * item 1): clicking a letter scrolls to that letter's section, and an `IntersectionObserver`
+ * tracks which section is currently in view to highlight the matching letter. Chosen over the
+ * research's native `view-timeline`/`animation-timeline` CSS approach because the character
+ * count (and therefore section count/size) is fully dynamic per Book — `view-timeline` needs a
+ * scroll range known/stable enough to bind to per named timeline, which fights a list that can
+ * be 3 characters today and 300 after an import; `IntersectionObserver` degrades gracefully to
+ * any length with the same code path. The highlight transition is the only thing gated by
+ * `useDelight().motionOk` — the rail's buttons and jump behavior work identically regardless.
  */
 export function CharactersPanel({ bookId }: { bookId: string }) {
   const [viewMode, setViewMode] = useState<CharactersViewMode>('list')
@@ -47,15 +158,95 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newSummary, setNewSummary] = useState('')
+  const [activeLetter, setActiveLetter] = useState<string | null>(null)
+  const sectionRefs = useRef(new Map<string, HTMLElement>())
+  const intersectingLettersRef = useRef(new Set<string>())
+  const { motionOk } = useDelight()
 
   const { data, isLoading } = useBookCharacters(bookId)
   const { data: books } = useBooks()
   const createCodex = useCreateCodex()
   const linkToBook = useLinkCodexToBook(bookId)
 
+  // Same ordered-scenes source the Outline tab's Timeline view uses (`useCanvas` for
+  // scene id/title, `useTimeline` for `timeline_order_index`/`in_story_time_*` — see
+  // `outline-panel.tsx`/`timeline-view.tsx`), reused via `buildRows` rather than re-derived,
+  // per PHASE-UI-EFFECTS-2.md §3's explicit instruction not to hand-roll new ordering logic.
+  const { data: canvas } = useCanvas(bookId)
+  const { data: timelineRows } = useTimeline(bookId)
+
   const entries = useMemo(() => data?.entries ?? [], [data])
   const relationships = useMemo(() => data?.relationships ?? [], [data])
+  const sceneLinks = useMemo(() => data?.scene_links ?? {}, [data])
   const filtered = useMemo(() => entries.filter((entry) => matchesQuery(entry, query)), [entries, query])
+
+  // List-view-only alphabetized grouping (see class doc above) — built off `filtered`, so the
+  // rail only ever offers/enables letters present among the current search results, never a
+  // letter whose only matches are hidden by the query.
+  const listGroups = useMemo(() => (viewMode === 'list' ? groupByLetter(filtered) : []), [filtered, viewMode])
+  const availableLetters = useMemo(
+    () => new Set(listGroups.map(([letter]) => letter).filter((letter) => letter !== '#')),
+    [listGroups],
+  )
+
+  const setSectionRef = useCallback(
+    (letter: string) => (el: HTMLElement | null) => {
+      if (el) sectionRefs.current.set(letter, el)
+      else sectionRefs.current.delete(letter)
+    },
+    [],
+  )
+
+  const jumpToLetter = useCallback(
+    (letter: string) => {
+      const el = sectionRefs.current.get(letter)
+      el?.scrollIntoView({ behavior: motionOk ? 'smooth' : 'auto', block: 'start' })
+    },
+    [motionOk],
+  )
+
+  // Scrollspy: watches each letter-section heading and highlights whichever one is the
+  // last (i.e. bottom-most, meaning most-recently-scrolled-past) section currently sitting in
+  // the top band of the viewport. Recomputed from an accumulated intersecting-letters set
+  // (not just the current callback's batch) so a letter doesn't lose highlight the instant its
+  // own heading scrolls just out of the band while no other heading has entered it yet.
+  useEffect(() => {
+    intersectingLettersRef.current.clear()
+    setActiveLetter(listGroups[0]?.[0] ?? null)
+    if (viewMode !== 'list' || listGroups.length === 0) return
+
+    const orderedLetters = listGroups.map(([letter]) => letter)
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const letter = (entry.target as HTMLElement).dataset.letterAnchor
+          if (!letter) continue
+          if (entry.isIntersecting) intersectingLettersRef.current.add(letter)
+          else intersectingLettersRef.current.delete(letter)
+        }
+        let chosen: string | null = null
+        for (const letter of orderedLetters) {
+          if (intersectingLettersRef.current.has(letter)) chosen = letter
+        }
+        if (chosen) setActiveLetter(chosen)
+      },
+      // Top 30% of the viewport counts as "current" — a section heading is active from the
+      // moment it crosses into that band until the next one does.
+      { rootMargin: '0px 0px -70% 0px', threshold: 0 },
+    )
+    for (const el of sectionRefs.current.values()) observer.observe(el)
+    return () => observer.disconnect()
+  }, [listGroups, viewMode])
+
+  const orderedScenes = useMemo(() => {
+    const scenes: OutlineScene[] = (canvas?.nodes ?? []).map((node) => ({
+      id: node.scene_id,
+      title: node.title,
+      nodeType: node.node_type,
+    }))
+    return buildRows(scenes, timelineRows ?? [])
+  }, [canvas, timelineRows])
 
   const nameInvalid = newName.trim().length === 0
   const addPending = createCodex.isPending || linkToBook.isPending
@@ -102,13 +293,14 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           </div>
         </div>
 
-        {/* List/Map view toggle (PHASE-UI-EFFECTS.md §3 task 4) — native `<button>`s in a
-            `role="tablist"`, same pattern as `outline-panel.tsx`'s Outline/Timeline toggle,
-            so it's keyboard-operable (Tab + Enter/Space) with no extra wiring. */}
+        {/* List/Map/Timeline view toggle (PHASE-UI-EFFECTS.md §3 task 4, PHASE-UI-EFFECTS-2.md
+            §5 task 8) — native `<button>`s in a `role="tablist"`, same pattern as
+            `outline-panel.tsx`'s Outline/Timeline toggle, so it's keyboard-operable
+            (Tab + Enter/Space) with no extra wiring. */}
         <div
           className="glass glass-edge flex items-center gap-1 rounded-full p-1"
           role="tablist"
-          aria-label="List or Map view"
+          aria-label="List, Map, or Timeline view"
         >
           <Button
             type="button"
@@ -133,6 +325,18 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           >
             <Network className="size-4" />
             Map
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+            className="rounded-full"
+            role="tab"
+            aria-selected={viewMode === 'timeline'}
+            onClick={() => setViewMode('timeline')}
+          >
+            <CalendarClock className="size-4" />
+            Timeline
           </Button>
         </div>
 
@@ -192,34 +396,61 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">No characters match “{trimmedQuery}”.</p>
       ) : viewMode === 'list' ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => setEditingEntry(entry)}
-              className={cn(
-                'rounded-xl text-left transition-colors',
-                'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-              )}
-            >
-              <Card className="h-full gap-1.5 py-4 transition-colors hover:bg-accent/50">
-                <CardContent className="px-4">
-                  <p className="truncate text-sm font-medium">{entry.name}</p>
-                  {entry.summary && (
-                    <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{entry.summary}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </button>
-          ))}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 space-y-6">
+            {listGroups.map(([letter, groupEntries]) => (
+              <div key={letter}>
+                {/* The section "anchor" — an IntersectionObserver target and jump destination,
+                    not just a label, so it's rendered even for the '#' bucket (no rail entry,
+                    but still a valid scroll target if it were ever needed). */}
+                <h3
+                  ref={setSectionRef(letter)}
+                  data-letter-anchor={letter}
+                  className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground"
+                  aria-hidden="true"
+                >
+                  {letter === '#' ? '#' : letter}
+                </h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {groupEntries.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => setEditingEntry(entry)}
+                      className={cn(
+                        'rounded-xl text-left transition-colors',
+                        'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+                      )}
+                    >
+                      <Card className="h-full gap-1.5 py-4 transition-colors hover:bg-accent/50">
+                        <CardContent className="px-4">
+                          <p className="truncate text-sm font-medium">{entry.name}</p>
+                          {entry.summary && (
+                            <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{entry.summary}</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <AlphabetIndexRail
+            available={availableLetters}
+            active={activeLetter}
+            motionOk={motionOk}
+            onJump={jumpToLetter}
+          />
         </div>
-      ) : (
+      ) : viewMode === 'map' ? (
         <CharacterRelationshipGraph
           entries={filtered}
           relationships={relationships}
           onSelectEntry={setEditingEntry}
         />
+      ) : (
+        <CharacterSceneTimeline entries={filtered} sceneLinks={sceneLinks} scenes={orderedScenes} />
       )}
 
       {editingEntry && (

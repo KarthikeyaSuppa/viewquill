@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, Star, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,8 +19,10 @@ import {
 } from '@/components/ui/select'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -51,6 +54,7 @@ import {
   useDetachImage,
   useEntityImages,
   useImages,
+  useReorderEntityImages,
   useUploadImage,
 } from '@/queries/images'
 import type { BookType } from '@/queries/books'
@@ -440,21 +444,39 @@ function DescriptionField({
   )
 }
 
-/** Prose-book body: attach/detach finalized images on this scene (docs/06 Phase 5 task
- * FE-B). A node here IS a scene, so the node's `sceneId` is used directly as
- * `entity_id`/`entity_type: 'scene'` for the polymorphic `entity_images` link — no separate
- * lookup needed. Two ways in: upload a brand-new `finalized_scene` image (attaches it the
- * moment the upload succeeds), or pick one already sitting in the finalized_scene pool
- * (e.g. one exported from the Images tab's "Reference pool" earlier). Detach (✕) only ever
- * removes the link — the image itself, and any other entity it's attached to, is
- * untouched. */
+/** Prose-book body: attach/detach/reorder finalized images on this scene (docs/06 Phase 5
+ * task FE-B; reorder + "Make cover" added per `PHASE-UI-EFFECTS-2.md` §4 B2). A node here IS
+ * a scene, so the node's `sceneId` is used directly as `entity_id`/`entity_type: 'scene'` for
+ * the polymorphic `entity_images` link — no separate lookup needed. Two ways in: upload a
+ * brand-new `finalized_scene` image (attaches it the moment the upload succeeds), or pick one
+ * already sitting in the finalized_scene pool (e.g. one exported from the Images tab's
+ * "Reference pool" earlier). Detach (✕) only ever removes the link — the image itself, and
+ * any other entity it's attached to, is untouched.
+ *
+ * Reorder uses up/down-arrow buttons rather than dnd-kit — `ElementsEditor` just above (this
+ * same file) already establishes that exact convention for a short ordered list
+ * (`useReorderElements`/`handleMove`), attached-image counts here run single digits same as
+ * screenplay elements, and arrow buttons are keyboard-operable with zero extra wiring, unlike
+ * dnd-kit's drag path (which needs its own `KeyboardSensor`, see `beat-board.tsx`) — no reason
+ * to reach for a heavier mechanism for a list this short. "Make cover" is the fast path for
+ * the common case: move one image to the front without manually walking it up past every
+ * other attached image; `nodes.tsx` reads `images?.[0]` as the node's cover thumbnail. */
 function SceneImagesSection({ sceneId }: { sceneId: string }) {
   const { data: attached } = useEntityImages('scene', sceneId)
   const { data: pool } = useImages('finalized_scene')
   const attachImage = useAttachImage()
   const detachImage = useDetachImage()
   const uploadImage = useUploadImage()
+  const reorderImages = useReorderEntityImages('scene', sceneId)
+  const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Multi-select state for the "Attach existing" popover — the popover stays open across
+  // individual picks (unlike the old single-pick-and-close `handlePickExisting`), and the
+  // selection is only committed (and cleared) on explicit confirm or on close.
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [selectedToAttach, setSelectedToAttach] = useState<Set<string>>(new Set())
+  const [isAttaching, setIsAttaching] = useState(false)
 
   const attachedIds = new Set((attached ?? []).map((image) => image.id))
   const pickable = (pool ?? []).filter((image) => !attachedIds.has(image.id))
@@ -472,12 +494,69 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
     )
   }
 
-  function handlePickExisting(imageId: string) {
-    attachImage.mutate({ imageId, entity_type: 'scene', entity_id: sceneId, role: 'finalized' })
+  function toggleSelectedToAttach(imageId: string) {
+    setSelectedToAttach((prev) => {
+      const next = new Set(prev)
+      if (next.has(imageId)) next.delete(imageId)
+      else next.add(imageId)
+      return next
+    })
+  }
+
+  function handleAttachMenuOpenChange(open: boolean) {
+    setAttachMenuOpen(open)
+    if (!open) setSelectedToAttach(new Set())
+  }
+
+  /** Attaches every currently-checked pickable image in parallel via the existing single-image
+   * `useAttachImage` mutation, then invalidates the attached-images query exactly once — not
+   * once per image — after all of them have settled. If one attach call fails, `Promise.all`
+   * rejects; `useAttachImage`'s own `onError` already toasts which image failed, so we just
+   * make sure we still invalidate afterward (rather than leaving stale state for the ones that
+   * DID succeed) and close the popover either way. */
+  async function handleConfirmAttach() {
+    const imageIds = Array.from(selectedToAttach)
+    if (imageIds.length === 0) return
+    setIsAttaching(true)
+    try {
+      await Promise.all(
+        imageIds.map((imageId) =>
+          attachImage.mutateAsync({ imageId, entity_type: 'scene', entity_id: sceneId, role: 'finalized' }),
+        ),
+      )
+    } catch {
+      // Individual failures are already surfaced via useAttachImage's onError toast.
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['entity-images', 'scene', sceneId] })
+      queryClient.invalidateQueries({ queryKey: ['book-images'] })
+      setSelectedToAttach(new Set())
+      setIsAttaching(false)
+      setAttachMenuOpen(false)
+    }
   }
 
   function handleDetach(imageId: string) {
     detachImage.mutate({ imageId, entity_type: 'scene', entity_id: sceneId, role: 'finalized' })
+  }
+
+  function handleMove(index: number, direction: -1 | 1) {
+    if (!attached) return
+    const targetIndex = index + direction
+    if (targetIndex < 0 || targetIndex >= attached.length) return
+    const reordered = [...attached]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(targetIndex, 0, moved)
+    reorderImages.mutate(reordered.map((image) => image.id))
+  }
+
+  /** Moves one image to the front of the order (→ becomes the cover) without disturbing the
+   * relative order of the rest. */
+  function handleMakeCover(imageId: string) {
+    if (!attached) return
+    const target = attached.find((image) => image.id === imageId)
+    if (!target) return
+    const reordered = [target, ...attached.filter((image) => image.id !== imageId)]
+    reorderImages.mutate(reordered.map((image) => image.id))
   }
 
   return (
@@ -485,7 +564,7 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
       <div className="flex items-center justify-between">
         <Label>Images</Label>
         <div className="flex items-center gap-1">
-          <DropdownMenu>
+          <DropdownMenu open={attachMenuOpen} onOpenChange={handleAttachMenuOpenChange}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
@@ -497,26 +576,46 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
                 Attach existing
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-64">
+            <DropdownMenuContent align="end" className="max-h-64 w-56">
               {pickable.length === 0 ? (
                 <p className="px-2 py-1.5 text-xs text-muted-foreground">
                   No other finalized images to attach.
                 </p>
               ) : (
-                pickable.map((image) => (
-                  <DropdownMenuItem
-                    key={image.id}
-                    onSelect={() => handlePickExisting(image.id)}
-                    className="gap-2"
-                  >
-                    <img
-                      src={imageThumbUrl(image.id)}
-                      alt=""
-                      className="size-6 rounded object-cover"
-                    />
-                    <span className="truncate">{image.display_name}</span>
-                  </DropdownMenuItem>
-                ))
+                <>
+                  {pickable.map((image) => (
+                    <DropdownMenuCheckboxItem
+                      key={image.id}
+                      checked={selectedToAttach.has(image.id)}
+                      onCheckedChange={() => toggleSelectedToAttach(image.id)}
+                      onSelect={(event) => event.preventDefault()}
+                      className="gap-2"
+                    >
+                      <img
+                        src={imageThumbUrl(image.id)}
+                        alt=""
+                        className="size-6 rounded object-cover"
+                      />
+                      <span className="truncate">{image.display_name}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <div className="px-1 pb-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full text-xs"
+                      disabled={selectedToAttach.size === 0 || isAttaching}
+                      onClick={handleConfirmAttach}
+                    >
+                      {isAttaching
+                        ? 'Attaching…'
+                        : selectedToAttach.size === 0
+                          ? 'Attach'
+                          : `Attach ${selectedToAttach.size} image${selectedToAttach.size === 1 ? '' : 's'}`}
+                    </Button>
+                  </div>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -544,25 +643,63 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
         <p className="text-xs text-muted-foreground">No images attached to this scene yet.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {attached!.map((image) => (
-            <div
-              key={image.id}
-              className="group relative size-14 overflow-hidden rounded-lg border border-border"
-            >
-              <img
-                src={imageThumbUrl(image.id)}
-                alt={image.display_name}
-                className="size-full object-cover"
-              />
-              <button
-                type="button"
-                aria-label={`Detach ${image.display_name}`}
-                onClick={() => handleDetach(image.id)}
-                disabled={detachImage.isPending}
-                className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              >
-                <X className="size-3" />
-              </button>
+          {attached!.map((image, index) => (
+            <div key={image.id} className="group flex flex-col items-center gap-1">
+              <div className="relative size-14 overflow-hidden rounded-lg border border-border">
+                <img
+                  src={imageThumbUrl(image.id)}
+                  alt={image.display_name}
+                  className="size-full object-cover"
+                />
+                {index === 0 && (
+                  <span className="absolute top-0.5 left-0.5 rounded bg-background/80 px-1 text-[9px] font-medium leading-4 text-foreground">
+                    Cover
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Detach ${image.display_name}`}
+                  onClick={() => handleDetach(image.id)}
+                  disabled={detachImage.isPending}
+                  className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+              <div className="flex items-center justify-center gap-0.5">
+                <button
+                  type="button"
+                  aria-label={`Move ${image.display_name} earlier`}
+                  onClick={() => handleMove(index, -1)}
+                  disabled={index === 0 || reorderImages.isPending}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                >
+                  <ArrowUp className="size-3" />
+                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Make ${image.display_name} the cover image`}
+                      onClick={() => handleMakeCover(image.id)}
+                      disabled={index === 0 || reorderImages.isPending}
+                      className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                    >
+                      <Star className="size-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Make cover image</TooltipContent>
+                </Tooltip>
+                <button
+                  type="button"
+                  aria-label={`Move ${image.display_name} later`}
+                  onClick={() => handleMove(index, 1)}
+                  disabled={index === attached!.length - 1 || reorderImages.isPending}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                >
+                  <ArrowDown className="size-3" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

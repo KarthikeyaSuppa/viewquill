@@ -781,3 +781,260 @@ def test_deleting_image_cascades_away_its_entity_links(client: TestClient) -> No
     after = client.get(f"/entities/book/{book_id}/images")
     assert after.status_code == 200
     assert after.json() == []
+
+
+# ── PHASE-UI-EFFECTS-2.md §4 B2 / §5 task 2: entity_images.order_index ──────────────────
+#
+# No reorder endpoint exists yet (that's task 3) — these tests set
+# ``EntityImage.order_index`` directly via the ORM to prove `list_for_entity`'s new
+# ORDER BY, both the "all NULL, must match old created_at DESC/id DESC behavior exactly"
+# regression case and the "some ordered, some NULL" mixed case.
+
+
+def _set_order_index(book_id: str, image_id: str, order_index: int | None) -> None:
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage
+
+    with SessionLocal() as db:
+        link = (
+            db.query(EntityImage)
+            .filter(
+                EntityImage.entity_type == "book",
+                EntityImage.entity_id == book_id,
+                EntityImage.image_id == image_id,
+            )
+            .one()
+        )
+        link.order_index = order_index
+        db.commit()
+
+
+def test_list_for_entity_all_null_order_index_matches_old_created_at_desc_id_desc_ordering(
+    client: TestClient,
+) -> None:
+    """Regression guard for the ``order_index`` migration (task 2): with every linked
+    row's ``order_index`` left at its post-migration default of ``NULL`` (as every
+    pre-existing row is), the new ORDER BY must produce results in EXACTLY the order the
+    old ``created_at DESC, id DESC``-only ORDER BY would have — i.e. this must be a no-op
+    for existing data."""
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage, Image
+
+    book_id = _create_book(client)
+    img_ids = [_upload(client)["id"] for _ in range(4)]
+    for image_id in img_ids:
+        _attach(client, image_id, "book", book_id)
+
+    # All order_index values are NULL by default (no _set_order_index call) — confirm that
+    # explicitly before asserting anything about ordering.
+    with SessionLocal() as db:
+        links = (
+            db.query(EntityImage)
+            .filter(EntityImage.entity_type == "book", EntityImage.entity_id == book_id)
+            .all()
+        )
+        assert all(link.order_index is None for link in links)
+
+        # Independently compute what the OLD (pre-migration) ORDER BY would have returned.
+        old_order_ids = [
+            row.id
+            for row in db.query(Image)
+            .join(EntityImage, EntityImage.image_id == Image.id)
+            .filter(EntityImage.entity_type == "book", EntityImage.entity_id == book_id)
+            .order_by(Image.created_at.desc(), Image.id.desc())
+            .all()
+        ]
+
+    resp = client.get(f"/entities/book/{book_id}/images")
+    assert resp.status_code == 200
+    new_order_ids = [row["id"] for row in resp.json()]
+
+    assert new_order_ids == old_order_ids
+    assert set(new_order_ids) == set(img_ids)
+
+
+def test_list_for_entity_orders_non_null_order_index_first_then_null_fallback(
+    client: TestClient,
+) -> None:
+    """Mixed case: images with an explicit ``order_index`` sort first (ascending), and the
+    remaining NULL-``order_index`` images fall back afterward, still relative-ordered by the
+    original ``created_at DESC, id DESC``."""
+    book_id = _create_book(client)
+
+    ordered_second = _upload(client, display_name="ordered-second")["id"]
+    ordered_first = _upload(client, display_name="ordered-first")["id"]
+    null_newer = _upload(client, display_name="null-newer")["id"]
+    null_older = _upload(client, display_name="null-older")["id"]
+
+    for image_id in (ordered_second, ordered_first, null_newer, null_older):
+        _attach(client, image_id, "book", book_id)
+
+    _set_order_index(book_id, ordered_first, 0)
+    _set_order_index(book_id, ordered_second, 1)
+    # null_newer / null_older are left at their default NULL order_index.
+
+    resp = client.get(f"/entities/book/{book_id}/images")
+    assert resp.status_code == 200
+    ids = [row["id"] for row in resp.json()]
+
+    # Explicitly-ordered images come first, in order_index ASC order.
+    assert ids[:2] == [ordered_first, ordered_second]
+    # NULL-order_index images fall back after them, in created_at DESC/id DESC order —
+    # since null_newer was attached (and thus its underlying Image row created) after
+    # null_older, it sorts first among the NULL group.
+    assert ids[2:] == [null_newer, null_older]
+
+
+# ── PHASE-UI-EFFECTS-2.md §4 B2 / §5 task 3: POST /entities/{type}/{id}/images/reorder ──
+
+
+def _order_indexes(book_id: str, image_ids: list[str]) -> list[int | None]:
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage
+
+    with SessionLocal() as db:
+        links = {
+            link.image_id: link.order_index
+            for link in db.query(EntityImage)
+            .filter(EntityImage.entity_type == "book", EntityImage.entity_id == book_id)
+            .all()
+        }
+    return [links[image_id] for image_id in image_ids]
+
+
+def test_reorder_persists_new_order(client: TestClient) -> None:
+    book_id = _create_book(client)
+    img_a = _upload(client, display_name="a")["id"]
+    img_b = _upload(client, display_name="b")["id"]
+    img_c = _upload(client, display_name="c")["id"]
+    for image_id in (img_a, img_b, img_c):
+        _attach(client, image_id, "book", book_id)
+
+    new_order = [img_c, img_a, img_b]
+    resp = client.post(f"/entities/book/{book_id}/images/reorder", json={"image_ids": new_order})
+    assert resp.status_code == 200
+    assert [row["id"] for row in resp.json()] == new_order
+
+    # Persisted, not just reflected in the response — a fresh GET returns the same order.
+    listed = client.get(f"/entities/book/{book_id}/images")
+    assert [row["id"] for row in listed.json()] == new_order
+
+    assert _order_indexes(book_id, new_order) == [0, 1, 2]
+
+
+def test_reorder_with_subset_resets_omitted_images_order_index_to_null_and_they_fall_back(
+    client: TestClient,
+) -> None:
+    book_id = _create_book(client)
+    img_a = _upload(client, display_name="a")["id"]
+    img_b = _upload(client, display_name="b")["id"]
+    img_c = _upload(client, display_name="c")["id"]
+    for image_id in (img_a, img_b, img_c):
+        _attach(client, image_id, "book", book_id)
+
+    # First, order all three explicitly.
+    first = client.post(
+        f"/entities/book/{book_id}/images/reorder",
+        json={"image_ids": [img_c, img_b, img_a]},
+    )
+    assert first.status_code == 200
+    assert _order_indexes(book_id, [img_a, img_b, img_c]) == [2, 1, 0]
+
+    # Now reorder with only a SUBSET (img_c omitted) — img_c's order_index must reset to
+    # NULL, not keep its stale value of 0 from the previous call.
+    second = client.post(
+        f"/entities/book/{book_id}/images/reorder",
+        json={"image_ids": [img_a, img_b]},
+    )
+    assert second.status_code == 200
+
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage
+
+    with SessionLocal() as db:
+        link_c = (
+            db.query(EntityImage)
+            .filter(
+                EntityImage.entity_type == "book",
+                EntityImage.entity_id == book_id,
+                EntityImage.image_id == img_c,
+            )
+            .one()
+        )
+        assert link_c.order_index is None
+
+    # img_c falls back to the NULL-fallback group, i.e. to the end, after img_a/img_b which
+    # now have explicit order_index 0/1.
+    listed = client.get(f"/entities/book/{book_id}/images")
+    ids = [row["id"] for row in listed.json()]
+    assert ids == [img_a, img_b, img_c]
+
+
+def test_reorder_twice_with_same_list_is_idempotent(client: TestClient) -> None:
+    book_id = _create_book(client)
+    img_a = _upload(client, display_name="a")["id"]
+    img_b = _upload(client, display_name="b")["id"]
+    for image_id in (img_a, img_b):
+        _attach(client, image_id, "book", book_id)
+
+    order = [img_b, img_a]
+    first = client.post(f"/entities/book/{book_id}/images/reorder", json={"image_ids": order})
+    assert first.status_code == 200
+    first_indexes = _order_indexes(book_id, order)
+
+    second = client.post(f"/entities/book/{book_id}/images/reorder", json={"image_ids": order})
+    assert second.status_code == 200
+    second_indexes = _order_indexes(book_id, order)
+
+    assert first_indexes == second_indexes == [0, 1]
+    assert [row["id"] for row in second.json()] == order
+
+    # No duplicate/phantom links were created by the second call.
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage
+
+    with SessionLocal() as db:
+        count = (
+            db.query(EntityImage)
+            .filter(EntityImage.entity_type == "book", EntityImage.entity_id == book_id)
+            .count()
+        )
+    assert count == 2
+
+
+def test_reorder_with_unattached_image_id_is_a_noop_for_that_id(client: TestClient) -> None:
+    book_id = _create_book(client)
+    img_attached = _upload(client, display_name="attached")["id"]
+    img_not_attached = _upload(client, display_name="not-attached")["id"]
+    _attach(client, img_attached, "book", book_id)
+
+    resp = client.post(
+        f"/entities/book/{book_id}/images/reorder",
+        json={"image_ids": [img_not_attached, img_attached]},
+    )
+    assert resp.status_code == 200
+
+    # No phantom link was created for the unattached image id.
+    listed = client.get(f"/entities/book/{book_id}/images")
+    ids = [row["id"] for row in listed.json()]
+    assert ids == [img_attached]
+    assert img_not_attached not in ids
+
+    from app.db.base import SessionLocal
+    from app.models.orm import EntityImage
+
+    with SessionLocal() as db:
+        count = (
+            db.query(EntityImage)
+            .filter(EntityImage.entity_type == "book", EntityImage.entity_id == book_id)
+            .count()
+        )
+    assert count == 1
+
+
+def test_reorder_rejects_bad_entity_type(client: TestClient) -> None:
+    resp = client.post(
+        "/entities/not_a_real_entity/some-id/images/reorder",
+        json={"image_ids": []},
+    )
+    assert resp.status_code == 422

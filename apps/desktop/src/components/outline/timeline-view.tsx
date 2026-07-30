@@ -26,7 +26,7 @@ import type { BookSceneOrder } from '@/lib/api'
 import type { OutlineScene } from '@/components/outline/beat-board'
 import { cn } from '@/lib/utils'
 
-interface TimelineRow {
+export interface TimelineRow {
   sceneId: string
   title: string
   label: string
@@ -35,8 +35,12 @@ interface TimelineRow {
 /** Orders scene ids by (in_story_time_sort_key NULLS LAST, timeline_order_index NULLS
  * LAST, title) — mirrors `outline_service.list_timeline`'s SQL ordering, with `title` as
  * the final tiebreaker instead of raw row id (more meaningful for a fresh, un-ordered
- * timeline where every row's key/index/id would otherwise be arbitrary). */
-function buildRows(scenes: OutlineScene[], timelineRows: BookSceneOrder[]): TimelineRow[] {
+ * timeline where every row's key/index/id would otherwise be arbitrary).
+ *
+ * Exported so other consumers of the same chronological scene order (e.g.
+ * `character-scene-timeline.tsx`'s Gantt x-axis, PHASE-UI-EFFECTS-2.md §3/§5 task 8) reuse
+ * this exact ordering instead of re-deriving it. */
+export function buildRows(scenes: OutlineScene[], timelineRows: BookSceneOrder[]): TimelineRow[] {
   const rowBySceneId = new Map(timelineRows.map((row) => [row.scene_id, row]))
 
   return scenes

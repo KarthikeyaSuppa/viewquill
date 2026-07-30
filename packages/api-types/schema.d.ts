@@ -806,6 +806,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/entities/{entity_type}/{entity_id}/images/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reorder Entity Images
+         * @description Sets the display order of images attached to (``entity_type``, ``entity_id``) —
+         *     ``payload.image_ids`` is the full desired order; any currently-attached image left out
+         *     of that list has its order reset to the recency-based fallback (see
+         *     ``entity_images_service.reorder_for_entity``). Returns the updated list, same shape as
+         *     ``GET /entities/{entity_type}/{entity_id}/images``, so the frontend can just replace its
+         *     local list with the response rather than re-fetching separately.
+         */
+        post: operations["reorder_entity_images_entities__entity_type___entity_id__images_reorder_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm/enhance": {
         parameters: {
             query?: never;
@@ -1624,14 +1649,22 @@ export interface components {
          * @description `GET /books/{book_id}/characters` aggregation (Characters tab: searchable list +
          *     relationship graph in one call). ``entries`` are this Book's linked Codex entries
          *     filtered to ``entry_type == 'character'``; ``relationships`` are ``codex_relationships``
-         *     rows fully internal to that entry set — see
-         *     app/services/codex_service.py's ``list_entries_for_book``/``list_relationships_within_book``.
+         *     rows fully internal to that entry set; ``scene_links`` maps each entry's ``id`` to the
+         *     ``scene_id``s it's linked to via ``codex_scene_links`` (PHASE-UI-EFFECTS-2.md §3/§5 task
+         *     1 — feeds the Characters Timeline view without a second round-trip; every entry id is
+         *     present, mapped to ``[]`` when that character has no scene links) — see
+         *     app/services/codex_service.py's
+         *     ``list_entries_for_book``/``list_relationships_within_book``/``list_scene_links_for_entries``.
          */
         CharacterMapResponse: {
             /** Entries */
             entries: components["schemas"]["CodexEntryRead"][];
             /** Relationships */
             relationships: components["schemas"]["CodexRelationshipRead"][];
+            /** Scene Links */
+            scene_links: {
+                [key: string]: string[];
+            };
         };
         /** CodexArcStateCreate */
         CodexArcStateCreate: {
@@ -1914,6 +1947,19 @@ export interface components {
             entity_id: string;
             /** Role */
             role: string | null;
+        };
+        /**
+         * EntityImageReorderRequest
+         * @description Body for ``POST /entities/{entity_type}/{entity_id}/images/reorder`` (PHASE-UI-
+         *     EFFECTS-2.md §4 B2 / §5 task 3). ``image_ids`` is the full desired ORDER of images
+         *     currently attached to this entity — position in the list becomes ``EntityImage.
+         *     order_index``; any currently-attached image omitted from this list has its
+         *     ``order_index`` reset to ``NULL`` (falls back to recency ordering), see
+         *     ``entity_images_service.reorder_for_entity``.
+         */
+        EntityImageReorderRequest: {
+            /** Image Ids */
+            image_ids?: string[];
         };
         /** FlagStatusUpdate */
         FlagStatusUpdate: {
@@ -4502,6 +4548,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_entity_images_entities__entity_type___entity_id__images_reorder_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityImageReorderRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

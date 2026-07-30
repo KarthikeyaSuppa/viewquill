@@ -495,7 +495,14 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     <div
       ref={containerRef}
       className={cn(
-        'overflow-hidden border-border',
+        // Context-aware cursor (PHASE-UI-EFFECTS-2.md #10, see index.css) — scoped to this
+        // container only via `qn-canvas-cursor`, so it never leaks to the Codex relationship
+        // map's separate `<ReactFlow>` instance. `qn-canvas-cursor--connecting` mirrors
+        // `connectSourceId` (the same state driving the aria-live announcements and the
+        // source-node ring below) so the mouse-visible cursor and the keyboard-visible signal
+        // never disagree about whether connect-mode is active.
+        'qn-canvas-cursor overflow-hidden border-border',
+        connectSourceId && 'qn-canvas-cursor--connecting',
         isFullscreen
           ? 'fixed inset-0 z-50 rounded-none border-0'
           : 'relative mt-4 h-[70vh] min-h-[480px] rounded-2xl border',

@@ -121,7 +121,16 @@ def detach(
 
 def list_for_entity(db: Session, *, entity_type: str, entity_id: str) -> list[Image]:
     """All ``Image`` rows linked to (``entity_type``, ``entity_id``), deterministically
-    ordered (``created_at DESC, id DESC`` — same ordering as ``images_service.list_images``).
+    ordered: rows with an explicit ``EntityImage.order_index`` (user-reordered / "cover"
+    picked, PHASE-UI-EFFECTS-2.md §4 B2) come first, lowest ``order_index`` first; rows
+    with ``order_index IS NULL`` (every row until a user explicitly reorders) come after,
+    falling back to ``created_at DESC, id DESC`` — the original ordering, preserved exactly
+    for that fallback group — same tie-break ordering as ``images_service.list_images``.
+
+    SQLite's own ``ORDER BY x ASC`` default already sorts NULL before non-NULL, which is
+    the opposite of what's wanted here, so the ``EntityImage.order_index.is_(None)``
+    boolean key is listed explicitly first (False/0 sorts before True/1) rather than
+    relying on any driver's default NULL placement.
 
     Raises ``ValueError("BAD_ENTITY_TYPE")`` if ``entity_type`` isn't one of
     ``ALLOWED_ENTITY_TYPES`` (mapped to HTTP 422 by the route).
@@ -136,9 +145,65 @@ def list_for_entity(db: Session, *, entity_type: str, entity_id: str) -> list[Im
             EntityImage.entity_type == entity_type,
             EntityImage.entity_id == entity_id,
         )
-        .order_by(Image.created_at.desc(), Image.id.desc())
+        .order_by(
+            EntityImage.order_index.is_(None),
+            EntityImage.order_index.asc(),
+            Image.created_at.desc(),
+            Image.id.desc(),
+        )
     )
     return list(db.execute(stmt).scalars())
+
+
+def reorder_for_entity(
+    db: Session, *, entity_type: str, entity_id: str, image_ids: list[str]
+) -> None:
+    """Sets ``EntityImage.order_index`` for every link currently attached to
+    (``entity_type``, ``entity_id``) so that ``list_for_entity`` returns images in exactly
+    the order given by ``image_ids`` (PHASE-UI-EFFECTS-2.md §4 B2 / §5 task 3).
+
+    For each ``image_id`` in the given ORDERED list, every ``EntityImage`` row matching
+    (``entity_type``, ``entity_id``, ``image_id``) — there can be more than one if the same
+    image is attached under multiple ``role``s, see ``attach``'s role semantics — has its
+    ``order_index`` set to that image's 0-based position in the list.
+
+    Links currently attached to this entity but NOT present in ``image_ids`` have their
+    ``order_index`` reset to ``NULL`` — this is deliberate, not an oversight: without it, a
+    previous reorder's stale ``order_index`` values would linger and interleave with the
+    new ordering (a row explicitly ranked "3" from a prior call would keep sorting ahead of
+    the NULL-fallback group even though the caller no longer mentions it). Resetting to
+    ``NULL`` puts omitted images back into the recency-based fallback group
+    (``created_at DESC, id DESC``, see ``list_for_entity``), i.e. they fall to the end of
+    whatever's explicitly ordered, not to some arbitrary stale position.
+
+    ``image_id`` values in the list that aren't actually attached to this entity are a
+    no-op for that id — this never creates a phantom ``EntityImage`` row (that's `attach`'s
+    job, and requires a real ``Image`` to exist); reordering is attach-list maintenance, not
+    an attach operation.
+
+    Idempotent: calling this again with the same ``image_ids`` list re-derives the same
+    ``order_index`` values and re-resets the same omitted set to ``NULL`` — no duplicate
+    rows, no drift.
+
+    Raises ``ValueError("BAD_ENTITY_TYPE")`` if ``entity_type`` isn't one of
+    ``ALLOWED_ENTITY_TYPES`` (mapped to HTTP 422 by the route).
+    """
+    if entity_type not in ALLOWED_ENTITY_TYPES:
+        raise ValueError("BAD_ENTITY_TYPE")
+
+    links = list(
+        db.execute(
+            select(EntityImage).where(
+                EntityImage.entity_type == entity_type,
+                EntityImage.entity_id == entity_id,
+            )
+        ).scalars()
+    )
+
+    position_by_image_id = {image_id: index for index, image_id in enumerate(image_ids)}
+    for link in links:
+        link.order_index = position_by_image_id.get(link.image_id)
+    db.commit()
 
 
 def gather_book_images(db: Session, book_id: str) -> list[Image]:
