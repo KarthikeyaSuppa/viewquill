@@ -79,6 +79,37 @@ def _latest_undone_undo_log(db: Session, book_id: str) -> UndoLog | None:
     ).scalars().first()
 
 
+def get_undo_status(db: Session, book_id: str) -> dict[str, bool]:
+    """Whether ``undo``/``redo`` currently have anything to do for this Book, WITHOUT
+    performing either — the read-only counterpart to ``undo_last_action``/
+    ``redo_last_action``, meant to back a status endpoint the frontend can poll instead of
+    inferring "nothing available" from a 404 error toast.
+
+    ``can_undo`` mirrors ``undo_last_action``'s own not-found check exactly: true iff
+    ``_latest_active_undo_log`` finds a row.
+
+    ``can_redo`` is NOT simply "``_latest_undone_undo_log`` finds a row" — that row can be
+    stale. If a newer destructive action happened for this Book after the undo (i.e. some
+    other ``UndoLog`` row for this Book now has a higher ``sequence``), that undone row is
+    no longer the most recent action overall, and ``redo_last_action`` re-applying it would
+    silently resurrect something the user has since moved past. So ``can_redo`` also
+    requires that no other row for this Book has a higher ``sequence`` than the undone row.
+    """
+    can_undo = _latest_active_undo_log(db, book_id) is not None
+
+    undone = _latest_undone_undo_log(db, book_id)
+    can_redo = False
+    if undone is not None:
+        newer_row_exists = db.execute(
+            select(UndoLog.id).where(
+                UndoLog.book_id == book_id, UndoLog.sequence > undone.sequence
+            )
+        ).first()
+        can_redo = newer_row_exists is None
+
+    return {"can_undo": can_undo, "can_redo": can_redo}
+
+
 def _restore_delete_scene(db: Session, payload: dict[str, Any]) -> None:
     """Reverse of ``scene_service._build_delete_undo_payload`` — re-insert the Scene row,
     then each ``BookSceneLink``, ``ScreenplayElement``, and ``SceneRevision`` (parent-before-

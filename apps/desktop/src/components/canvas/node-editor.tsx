@@ -62,7 +62,6 @@ import type { BookType } from '@/queries/books'
 import type { SceneFlowNode } from '@/components/canvas/nodes'
 import { EnhanceDiff } from '@/components/canvas/enhance-diff'
 import { insertAtCaret, MicButton } from '@/components/voice/mic-button'
-import { SuggestionPanel } from '@/components/canvas/suggestion-panel'
 
 const STATUS_OPTIONS = ['draft', 'revised', 'final'] as const
 
@@ -276,21 +275,18 @@ function NodeEditorBody({
             </Select>
           </div>
 
-          <SuggestionPanel sceneId={sceneId} />
-
           {script ? (
             <ElementsEditor sceneId={sceneId} />
           ) : (
-            <>
-              <DescriptionField
-                sceneId={sceneId}
-                bookId={bookId}
-                description={description}
-                setDescription={setDescription}
-              />
-              <SceneImagesSection sceneId={sceneId} />
-            </>
+            <DescriptionField
+              sceneId={sceneId}
+              bookId={bookId}
+              description={description}
+              setDescription={setDescription}
+            />
           )}
+
+          <SceneImagesSection sceneId={sceneId} />
 
           <Button onClick={onSave} disabled={titleInvalid || savePending} className="self-start">
             {savePending ? 'Saving…' : 'Save changes'}
@@ -330,8 +326,9 @@ function NodeEditorBody({
                 <AlertDialogDescription>
                   This permanently deletes the scene — its title, description, and (for
                   screenplay scenes) every element in it — everywhere it appears, including
-                  every other Book it's linked to. This cannot be undone. If you only want to
-                  remove it from this canvas, use “Remove from canvas” instead.
+                  every other Book it's linked to. This can be undone via Undo, but only
+                  briefly — after that it's gone for good. If you only want to remove it
+                  from this canvas, use “Remove from canvas” instead.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -577,17 +574,28 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
         <Label>Images</Label>
         <div className="flex items-center gap-1">
           <DropdownMenu open={attachMenuOpen} onOpenChange={handleAttachMenuOpenChange}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pickable.length === 0}
-                className="gap-1 text-xs"
-              >
-                <ImagePlus className="size-3.5" />
-                Attach existing
-              </Button>
-            </DropdownMenuTrigger>
+            {pickable.length === 0 ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button variant="outline" size="sm" disabled className="gap-1 text-xs">
+                      <ImagePlus className="size-3.5" />
+                      Attach existing
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  No other finalized images available to attach yet — upload one first.
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1 text-xs">
+                  <ImagePlus className="size-3.5" />
+                  Attach existing
+                </Button>
+              </DropdownMenuTrigger>
+            )}
             <DropdownMenuContent align="end" className="max-h-64 w-56">
               {pickable.length === 0 ? (
                 <p className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -650,6 +658,11 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
           />
         </div>
       </div>
+
+      {/* Surfaces the `accept` list above up front — otherwise the only feedback for an
+          unsupported file (e.g. HEIC, TIFF) is the native file picker silently graying it out,
+          or a rejection after the fact. */}
+      <p className="text-right text-[11px] text-muted-foreground">PNG, JPEG, WebP, or GIF</p>
 
       {(attached?.length ?? 0) === 0 ? (
         <p className="text-xs text-muted-foreground">No images attached to this scene yet.</p>

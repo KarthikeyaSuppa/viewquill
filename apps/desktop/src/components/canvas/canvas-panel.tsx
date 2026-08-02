@@ -30,7 +30,9 @@ import {
   MapPinned,
   Minimize2,
   Combine,
+  Redo2,
   Sparkles,
+  Undo2,
 } from 'lucide-react'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
 import {
@@ -41,7 +43,7 @@ import {
   useUpdateNodePosition,
 } from '@/queries/canvas'
 import { useDeleteScene } from '@/queries/screenplay'
-import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
+import { showUndoToast, useRedoLastAction, useUndoLastAction, useUndoStatus } from '@/queries/undo'
 import { useApplyCanvasTemplate, type CanvasTemplateKey } from '@/queries/canvas-templates'
 import { useBook } from '@/queries/books'
 import type { CanvasNode as CanvasNodeDto, NodeType } from '@/lib/api'
@@ -156,6 +158,7 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const deleteScene = useDeleteScene()
   const undoLastAction = useUndoLastAction(bookId)
   const redoLastAction = useRedoLastAction(bookId)
+  const { data: undoStatus } = useUndoStatus(bookId)
   const createEdge = useCreateEdge(bookId)
   const deleteEdge = useDeleteEdge(bookId)
   const applyTemplate = useApplyCanvasTemplate(bookId)
@@ -688,6 +691,55 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         <TooltipContent>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen canvas'}</TooltipContent>
       </Tooltip>
 
+      {/* Undo/Redo (PHASE11.md Workstream B task 7 follow-up) — an always-visible persistent
+          pair, complementing (not replacing) the toast-triggered Undo/Redo (`showUndoToast`
+          after delete/merge) — both call the exact same `useUndoLastAction`/`useRedoLastAction`
+          mutations, so clicking either one has an identical effect. Sits just below the
+          fullscreen toggle (which occupies left-4/top-4 at `size-8`, i.e. down to top: 3rem) —
+          top-16 (4rem) leaves a full 1rem gap, clear of any overlap. */}
+      <div
+        className="glass glass-edge pointer-events-auto absolute left-4 top-16 z-10 flex items-center gap-1 rounded-xl p-1"
+        role="group"
+        aria-label="Undo/redo"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Undo last action"
+                disabled={!undoStatus?.can_undo}
+                onClick={() => undoLastAction.mutate()}
+              >
+                <Undo2 className="size-4" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {undoStatus?.can_undo ? 'Undo last action' : 'Nothing to undo'}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Redo last action"
+                disabled={!undoStatus?.can_redo}
+                onClick={() => redoLastAction.mutate()}
+              >
+                <Redo2 className="size-4" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {undoStatus?.can_redo ? 'Redo last action' : 'Nothing to redo'}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="glass glass-edge pointer-events-auto flex flex-col items-center gap-1 rounded-2xl px-8 py-10 text-center">
@@ -729,6 +781,11 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
                 )
               })}
             </div>
+            {/* Links this template row back to the "Add node" toolbar button mentioned in the
+                caption above as the *other* way to start a canvas — without this, the two
+                entry points read as unrelated features rather than alternatives for the same
+                "how do I start" decision. */}
+            <p className="mt-1 text-xs text-muted-foreground">or add nodes one at a time</p>
           </div>
         </div>
       )}

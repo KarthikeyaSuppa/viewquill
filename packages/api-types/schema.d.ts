@@ -489,6 +489,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/books/{book_id}/undo-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Undo Status */
+        get: operations["get_undo_status_books__book_id__undo_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/books/{book_id}/undo": {
         parameters: {
             query?: never;
@@ -2551,6 +2568,13 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /** UndoStatusRead */
+        UndoStatusRead: {
+            /** Can Undo */
+            can_undo: boolean;
+            /** Can Redo */
+            can_redo: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -3841,6 +3865,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_undo_status_books__book_id__undo_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoStatusRead"];
                 };
             };
             /** @description Validation Error */

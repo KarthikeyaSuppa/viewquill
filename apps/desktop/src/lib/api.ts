@@ -236,6 +236,13 @@ export interface UndoAction {
   created_at: string
 }
 
+/** Mirrors app/models/schemas.py UndoStatusRead — `GET /books/{book_id}/undo-status`, whether
+ * there's a last action available to undo/redo right now, for gating Undo/Redo controls. */
+export interface UndoStatus {
+  can_undo: boolean
+  can_redo: boolean
+}
+
 // ── Codex (mirrors app/models/schemas.py CodexEntry*; docs/06 Phase 2 tasks B1/B2, H3).
 // Full custom-fields/relationships/arc editor is Phase 3 (docs/06) — this is the MVP shape. ──
 export type CodexEntryType = 'character' | 'location' | 'faction' | 'object_lore'

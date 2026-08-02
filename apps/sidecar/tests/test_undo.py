@@ -162,6 +162,77 @@ def test_undo_and_redo_missing_book_404(client: TestClient) -> None:
     assert client.post("/books/does-not-exist/redo").status_code == 404
 
 
+# ── GET /books/{book_id}/undo-status ────────────────────────────────────────────
+def test_undo_status_fresh_book_is_all_false(client: TestClient) -> None:
+    book_resp = client.post(
+        "/books", json={"title": "Fresh Undo Status Book", "book_type": "story_book"}
+    )
+    assert book_resp.status_code == 201
+    book_id = book_resp.json()["id"]
+
+    status_resp = client.get(f"/books/{book_id}/undo-status")
+    assert status_resp.status_code == 200
+    assert status_resp.json() == {"can_undo": False, "can_redo": False}
+
+
+def test_undo_status_after_delete_only_can_undo(client: TestClient) -> None:
+    book_id, scene_id, _element_id = _make_book_with_scene(client)
+
+    delete_resp = client.delete(f"/scenes/{scene_id}")
+    assert delete_resp.status_code == 204
+
+    status_resp = client.get(f"/books/{book_id}/undo-status")
+    assert status_resp.status_code == 200
+    assert status_resp.json() == {"can_undo": True, "can_redo": False}
+
+
+def test_undo_status_after_undo_only_can_redo(client: TestClient) -> None:
+    book_id, scene_id, _element_id = _make_book_with_scene(client)
+
+    assert client.delete(f"/scenes/{scene_id}").status_code == 204
+    assert client.post(f"/books/{book_id}/undo").status_code == 200
+
+    status_resp = client.get(f"/books/{book_id}/undo-status")
+    assert status_resp.status_code == 200
+    assert status_resp.json() == {"can_undo": False, "can_redo": True}
+
+
+def test_undo_status_redo_stale_after_newer_action(client: TestClient) -> None:
+    """Delete scene A, undo it (redo becomes available), then delete scene B — a NEW
+    destructive action. The undone row for A is still technically ``undone_at IS NOT
+    NULL`` in the table, but it's no longer the Book's most recent action, so
+    ``can_redo`` must report False (redoing it would silently resurrect a stale action);
+    ``can_undo`` must report True since B's delete is now the latest undoable action.
+    """
+    book_id, scene_a_id, _element_id = _make_book_with_scene(client)
+
+    scene_b_resp = client.post(
+        "/scenes",
+        json={"node_type": "scene", "title": "Scene B", "description": "Beta prose."},
+    )
+    assert scene_b_resp.status_code == 201
+    scene_b_id = scene_b_resp.json()["id"]
+    link_b_resp = client.post(f"/books/{book_id}/scenes/{scene_b_id}", json={})
+    assert link_b_resp.status_code == 201
+
+    assert client.delete(f"/scenes/{scene_a_id}").status_code == 204
+    assert client.post(f"/books/{book_id}/undo").status_code == 200
+
+    # Sanity check: redo is available right after the undo, before B is deleted.
+    mid_status = client.get(f"/books/{book_id}/undo-status")
+    assert mid_status.json() == {"can_undo": False, "can_redo": True}
+
+    assert client.delete(f"/scenes/{scene_b_id}").status_code == 204
+
+    status_resp = client.get(f"/books/{book_id}/undo-status")
+    assert status_resp.status_code == 200
+    assert status_resp.json() == {"can_undo": True, "can_redo": False}
+
+
+def test_undo_status_missing_book_404(client: TestClient) -> None:
+    assert client.get("/books/does-not-exist/undo-status").status_code == 404
+
+
 # ── Delete/undo must not lose a scene's permanent revision/merge history ────────
 def test_undo_restores_scene_revisions_and_scene_merges(client: TestClient) -> None:
     """A scene with SceneRevision history AND SceneMerge provenance, hard-deleted then
@@ -171,7 +242,9 @@ def test_undo_restores_scene_revisions_and_scene_merges(client: TestClient) -> N
     must restore that column instead of reinserting a row) — see
     ``scene_service._build_delete_undo_payload`` / ``undo_service._restore_delete_scene``.
     """
-    book_resp = client.post("/books", json={"title": "History Undo Book", "book_type": "story_book"})
+    book_resp = client.post(
+        "/books", json={"title": "History Undo Book", "book_type": "story_book"}
+    )
     assert book_resp.status_code == 201
     book_id = book_resp.json()["id"]
 

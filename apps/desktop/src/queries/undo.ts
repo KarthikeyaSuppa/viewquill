@@ -1,14 +1,27 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import type { UndoAction } from '@/lib/api'
+import type { UndoAction, UndoStatus } from '@/lib/api'
+
+/** Fetches whether this Book currently has a last action available to undo/redo —
+ * `GET /books/{book_id}/undo-status` — so Undo/Redo controls can gate/disable themselves
+ * instead of guessing from mutation state. Same pattern as `queries/canvas.ts`'s `useCanvas`. */
+export function useUndoStatus(bookId: string | undefined) {
+  return useQuery({
+    queryKey: ['undo-status', bookId],
+    queryFn: () => api.get<UndoStatus>(`/books/${bookId}/undo-status`),
+    enabled: !!bookId,
+  })
+}
 
 /** Pops and re-applies the most recent `UndoLog` row for a Book — covers both
  * `delete_scene` (canvas-panel.tsx keyboard-delete, nodes.tsx "Delete permanently") and
  * `merge_scenes` (merge-dialog.tsx Accept) undo-able actions (PHASE11.md Workstream B task 7).
  * Scoped to the single last action, not a multi-level history stack. Same invalidation
  * convention as every other `queries/canvas.ts` mutation — a plain `['canvas', bookId]`
- * invalidate is enough for the restored scene/node to reappear from the next refetch. */
+ * invalidate is enough for the restored scene/node to reappear from the next refetch. Also
+ * invalidates `['undo-status', bookId]` so `useUndoStatus`'s can_undo/can_redo refetch to match
+ * the action just taken. */
 export function useUndoLastAction(bookId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -18,6 +31,7 @@ export function useUndoLastAction(bookId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['canvas', bookId] })
+      queryClient.invalidateQueries({ queryKey: ['undo-status', bookId] })
     },
     onError: () => toast.error('Nothing to undo'),
   })
@@ -25,7 +39,8 @@ export function useUndoLastAction(bookId: string | undefined) {
 
 /** Mirrors `useUndoLastAction` for `POST /books/{book_id}/redo` — re-applies whatever the
  * last Undo just reversed. Only ever surfaced from the brief "Redo available" toast
- * `showUndoToast` below shows after a successful Undo click, not a standalone control. */
+ * `showUndoToast` below shows after a successful Undo click, not a standalone control. Also
+ * invalidates `['undo-status', bookId]`, same reasoning as `useUndoLastAction`. */
 export function useRedoLastAction(bookId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -35,6 +50,7 @@ export function useRedoLastAction(bookId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['canvas', bookId] })
+      queryClient.invalidateQueries({ queryKey: ['undo-status', bookId] })
     },
     onError: () => toast.error('Nothing to redo'),
   })

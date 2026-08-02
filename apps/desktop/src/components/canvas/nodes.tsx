@@ -1,4 +1,4 @@
-import { useState, type ComponentType, type MouseEvent } from 'react'
+import { useState, type ComponentType, type CSSProperties, type MouseEvent } from 'react'
 import { Handle, Position, type Node, type NodeProps, type NodeTypes } from '@xyflow/react'
 import {
   Clapperboard,
@@ -6,6 +6,7 @@ import {
   EllipsisVertical,
   History as HistoryIcon,
   Image,
+  ImageOff,
   Lightbulb,
   MapPinned,
   Sparkles,
@@ -21,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { isFirstConnectHint } from '@/lib/delight'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,22 +134,80 @@ export interface CanvasNodeData extends Record<string, unknown> {
  * (docs/06 Phase 2 task G4) — the canonical node_type on the server is still "scene". */
 export type SceneFlowNode = Node<CanvasNodeData, 'scene' | 'plot_point' | 'thought' | 'screenplay'>
 
-/** Handle ids match `EdgeCreate.source_handle`/`target_handle` — kept stable across renders. */
-function NodeHandles() {
+/** `accentClass` looks like `bg-[oklch(0.54_0.21_277)]` (Tailwind's arbitrary-value
+ * underscore-for-space convention) — strips the `bg-[...]` wrapper and restores real
+ * spaces so the same node-type color `BaseNodeConfig` already computes for the accent
+ * strip can be reused as a plain CSS color value for the handle's `--handle-accent`
+ * custom property below, instead of inventing a second color per node type. */
+function accentColorFromClass(accentClass: string): string {
+  return accentClass.replace(/^bg-\[(.+)\]$/, '$1').replace(/_/g, ' ')
+}
+
+/** Handle ids match `EdgeCreate.source_handle`/`target_handle` — kept stable across renders.
+ * At rest, handles are a low-opacity but always-visible dot (bigger than xyflow's own
+ * hover-only default) so they read as "grabbable" without hovering first; on hover/focus
+ * they grow further and swap fill to this node type's own accent color via the
+ * `--handle-accent` custom property (`.node-handle-accent` in `index.css`, same pattern as
+ * `image-card.tsx`'s `--image-shadow-src`) since that color varies per node type and can't
+ * be expressed as a static Tailwind class here. Purely a CSS hover transition, same
+ * ungated precedent as this file's own `hover:scale-125` on the thumbnail strip below —
+ * not gated behind `useDelight().motionOk`. */
+function NodeHandles({ accentClass }: { accentClass: string }) {
+  const style = { '--handle-accent': accentColorFromClass(accentClass) } as CSSProperties
+  const className =
+    'node-handle-accent !size-3.5 !border-2 !bg-background !opacity-70 transition-all hover:!size-5 hover:!opacity-100 focus-visible:!size-5 focus-visible:!opacity-100'
+
+  // One-time onboarding hint (see `lib/delight.ts`'s `isFirstConnectHint`, mirrors
+  // `isFirstNodeMilestone`'s check-then-set-in-one-call localStorage pattern): only the
+  // very first `NodeHandles` to mount across this profile's lifetime gets `true` back, so
+  // only that one node's two `source` handles (bottom/right — the ones a user actually
+  // drags FROM to start a connection) get wrapped in a hint `Tooltip`. Every other node,
+  // this session or any future one, renders plain `Handle`s exactly as task 3 left them.
+  const [showConnectHint] = useState(() => isFirstConnectHint())
+
   return (
     <>
-      <Handle id="top" type="target" position={Position.Top} className="!size-2.5 !border-2 !bg-background" />
-      <Handle id="left" type="target" position={Position.Left} className="!size-2.5 !border-2 !bg-background" />
-      <Handle id="bottom" type="source" position={Position.Bottom} className="!size-2.5 !border-2 !bg-background" />
-      <Handle id="right" type="source" position={Position.Right} className="!size-2.5 !border-2 !bg-background" />
+      <Handle id="top" type="target" position={Position.Top} className={className} style={style} />
+      <Handle id="left" type="target" position={Position.Left} className={className} style={style} />
+      {showConnectHint ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Handle id="bottom" type="source" position={Position.Bottom} className={className} style={style} />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Drag to connect to another node</TooltipContent>
+        </Tooltip>
+      ) : (
+        <Handle id="bottom" type="source" position={Position.Bottom} className={className} style={style} />
+      )}
+      {showConnectHint ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Handle id="right" type="source" position={Position.Right} className={className} style={style} />
+          </TooltipTrigger>
+          <TooltipContent side="right">Drag to connect to another node</TooltipContent>
+        </Tooltip>
+      ) : (
+        <Handle id="right" type="source" position={Position.Right} className={className} style={style} />
+      )}
     </>
   )
 }
+
+/** Where a node type's image-area aspect ratio comes from:
+ * - `'scene-preference'`: read the user's global Canvas-tab rectangle/square toggle
+ *   (`useCardStyleStore`) — today's Scene behavior, preserved exactly.
+ * - `{ fixed: string }`: a Tailwind aspect class baked into the node type itself,
+ *   independent of that toggle (Plot Point/Thought — shape now signals type). */
+type AspectSource = 'scene-preference' | { fixed: string }
 
 interface BaseNodeConfig {
   accentClass: string
   icon: ComponentType<{ className?: string }>
   label: string
+  aspectSource: AspectSource
+  /** Outer card corner rounding — defaults to the shared `rounded-2xl` every type used
+   * before this field existed; only Thought overrides it. */
+  cardRadiusClass?: string
 }
 
 /** The node-card redesign (docs/10 node canvas redesign, task FE-B): a main image area
@@ -159,8 +219,10 @@ interface BaseNodeConfig {
  * bubble up to xyflow's `onNodeClick`, which is what opens the `NodeEditor` drawer. */
 function BaseNode(
   { data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<SceneFlowNode>,
-  { accentClass, icon: Icon, label }: BaseNodeConfig,
+  { accentClass, icon: Icon, label, aspectSource, cardRadiusClass = 'rounded-2xl' }: BaseNodeConfig,
 ) {
+  // Called unconditionally (rules of hooks) regardless of `aspectSource` — its value only
+  // feeds `aspectClass` below when a node type actually opts into following it.
   const cardStyle = useCardStyleStore((state) => state.cardStyle)
   const { data: images, isLoading: imagesLoading, isError: imagesError } = useEntityImages('scene', data.sceneId)
   const createNode = useCreateNode(data.bookId)
@@ -182,7 +244,12 @@ function BaseNode(
   // rather than reading an empty `mainImage`/`thumbnails` as "confirmed no images".
   const mainImage = images?.[0] ?? null
   const thumbnails = (images ?? []).slice(0, 4)
-  const aspectClass = cardStyle === 'square' ? 'aspect-square' : 'aspect-[16/10]'
+  const aspectClass =
+    aspectSource === 'scene-preference'
+      ? cardStyle === 'square'
+        ? 'aspect-square'
+        : 'aspect-[16/10]'
+      : aspectSource.fixed
 
   function handleDuplicate(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
@@ -204,11 +271,12 @@ function BaseNode(
       <div className="flex flex-col gap-2">
         <div
           className={cn(
-            'glass glass-edge relative w-64 overflow-hidden rounded-2xl border-0 shadow-lg transition-shadow',
+            'glass glass-edge relative w-64 overflow-hidden border-0 shadow-lg transition-shadow',
+            cardRadiusClass,
             selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
           )}
         >
-          <NodeHandles />
+          <NodeHandles accentClass={accentClass} />
           <div className={cn('h-1.5 w-full', accentClass)} />
           <div className="flex flex-col gap-2 p-4">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -225,9 +293,11 @@ function BaseNode(
                 className={cn('w-full rounded-lg object-cover', aspectClass)}
               />
             ) : (
-              // No distinct visual for the error case (small, scoped fix) — but it's deliberately
-              // not conflated with a confirmed-empty state; see the NOTE on `mainImage` above for
-              // why this placeholder can mean either "none attached" or "failed to load".
+              // Distinguishable at a glance, not just on hover: a failed images fetch (`imagesError`)
+              // swaps in `ImageOff` instead of the generic `Image` icon, so "query errored" reads
+              // differently from a genuinely-empty state even before the `title` tooltip is seen.
+              // See the NOTE on `mainImage` above for why this placeholder can mean either "none
+              // attached" or "failed to load".
               <div
                 className={cn(
                   'flex w-full items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground',
@@ -236,7 +306,7 @@ function BaseNode(
                 title={imagesError ? 'Could not load attached images' : undefined}
                 aria-hidden
               >
-                <Image className="size-5" />
+                {imagesError ? <ImageOff className="size-5" /> : <Image className="size-5" />}
               </div>
             )}
 
@@ -299,10 +369,17 @@ function BaseNode(
                         <HistoryIcon className="size-3.5" />
                         History
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => removeFromCanvas.mutate(data.sceneId)}>
+                      <DropdownMenuItem
+                        onSelect={() => removeFromCanvas.mutate(data.sceneId)}
+                        title="Only unlinks this scene from this canvas — it stays in the Library and on any other Book it's linked to."
+                      >
                         Remove from canvas
                       </DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setDeleteOpen(true)}
+                        title="Permanently deletes this scene everywhere it's used. This can be undone via Undo, but only briefly."
+                      >
                         Delete permanently
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -322,7 +399,20 @@ function BaseNode(
               key={image.id}
               src={imageThumbUrl(image.id)}
               alt=""
-              className="size-10 rounded-md object-cover transition-transform hover:scale-125"
+              // No `onClick`/`stopPropagation` here on purpose — same as the main image/title/
+              // description above, this deliberately lets the click bubble up to xyflow's
+              // `.react-flow__node` wrapper (`onSelectNodeHandler` in @xyflow/react), which is
+              // what fires `onNodeClick` → `handleNodeClick` in `canvas-panel.tsx` and opens this
+              // node's `NodeEditor` drawer — the same drawer a click anywhere else on the card
+              // opens. Stopping propagation here (like `handleDuplicate`/the ⋯ trigger do) would
+              // be wrong: those guard a *different* action from also triggering node-select; a
+              // thumbnail click has no separate action of its own, so it should behave exactly
+              // like clicking the card, including respecting a Shift-click's multi-select path.
+              // `draggable={false}` avoids the browser's native image-drag gesture (which starts
+              // on the same mousedown xyflow's own node-drag detection listens for) turning what
+              // the user intends as a click into a spurious tiny drag.
+              draggable={false}
+              className="size-10 cursor-pointer rounded-md object-cover transition-transform hover:scale-125"
             />
           ))}
         </div>
@@ -340,8 +430,9 @@ function BaseNode(
             <AlertDialogDescription>
               This permanently deletes the scene — its title, description, and (for
               screenplay scenes) every element in it — everywhere it appears, including
-              every other Book it's linked to. This cannot be undone. If you only want to
-              remove it from this canvas, use “Remove from canvas” instead.
+              every other Book it's linked to. This can be undone via Undo, but only
+              briefly — after that it's gone for good. If you only want to remove it from
+              this canvas, use “Remove from canvas” instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -372,19 +463,38 @@ function BaseNode(
   )
 }
 
-/** node_type="scene" — indigo, the default prose beat. */
+/** node_type="scene" — indigo, the default prose beat. Shape follows the user's global
+ * Canvas-tab rectangle/square toggle (`useCardStyleStore`), exactly as before this task. */
 export function SceneNode(props: NodeProps<SceneFlowNode>) {
-  return BaseNode(props, { accentClass: 'bg-[oklch(0.54_0.21_277)]', icon: Clapperboard, label: 'Scene' })
+  return BaseNode(props, {
+    accentClass: 'bg-[oklch(0.54_0.21_277)]',
+    icon: Clapperboard,
+    label: 'Scene',
+    aspectSource: 'scene-preference',
+  })
 }
 
-/** node_type="plot_point" — amber, a structural beat/turn. */
+/** node_type="plot_point" — amber, a structural beat/turn. Always a vertical rectangle
+ * (taller than wide) regardless of the Scene shape toggle, so shape itself signals type. */
 export function PlotPointNode(props: NodeProps<SceneFlowNode>) {
-  return BaseNode(props, { accentClass: 'bg-[oklch(0.7_0.16_55)]', icon: MapPinned, label: 'Plot Point' })
+  return BaseNode(props, {
+    accentClass: 'bg-[oklch(0.7_0.16_55)]',
+    icon: MapPinned,
+    label: 'Plot Point',
+    aspectSource: { fixed: 'aspect-[3/4]' },
+  })
 }
 
-/** node_type="thought" — cyan, a loose idea not yet a scene. */
+/** node_type="thought" — cyan, a loose idea not yet a scene. Always square with rounder
+ * corners than every other node type, regardless of the Scene shape toggle. */
 export function ThoughtNode(props: NodeProps<SceneFlowNode>) {
-  return BaseNode(props, { accentClass: 'bg-[oklch(0.6_0.13_195)]', icon: Lightbulb, label: 'Thought' })
+  return BaseNode(props, {
+    accentClass: 'bg-[oklch(0.6_0.13_195)]',
+    icon: Lightbulb,
+    label: 'Thought',
+    aspectSource: { fixed: 'aspect-square' },
+    cardRadiusClass: 'rounded-[2rem]',
+  })
 }
 
 export const nodeTypes: NodeTypes = {

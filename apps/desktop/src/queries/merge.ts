@@ -193,7 +193,9 @@ export interface AcceptMergeScenesInput {
  * mutations (`useCreateEdge`/`useDeleteEdge` etc.) — invalidates the `['canvas', bookId]`
  * query on success so both the new merged node AND the now-archived source nodes' removal
  * show up together from one consistent refetch (a partial cache patch would show the new
- * node appearing before the sources visibly disappear). */
+ * node appearing before the sources visibly disappear). Also invalidates
+ * `['undo-status', bookId]` — a successful merge writes a new `UndoLog` row, so
+ * `useUndoStatus` (queries/undo.ts) needs to refetch to reflect the now-available Undo. */
 export function useAcceptMergeScenes(bookId: string | undefined) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -203,6 +205,7 @@ export function useAcceptMergeScenes(bookId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['canvas', bookId] })
+      queryClient.invalidateQueries({ queryKey: ['undo-status', bookId] })
     },
     onError: () => toast.error('Could not merge the selected nodes'),
   })

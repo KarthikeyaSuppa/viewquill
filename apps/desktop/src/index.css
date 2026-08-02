@@ -398,6 +398,18 @@
   transform: translateY(14px) scale(0.95);
 }
 
+/* Canvas node connection handles (`nodes.tsx` `NodeHandles`) — on hover/focus, swap the
+   handle's fill from the plain `!bg-background` at-rest color to this node type's own
+   accent color. That color varies per node type (Scene/Plot Point/Thought each has its
+   own `accentClass` oklch value), so it's supplied via the `--handle-accent` custom
+   property set inline per node instead of a static Tailwind class — same pattern as
+   `--image-shadow-src` above. `!important` matches the specificity of Tailwind's own
+   `!`-prefixed utilities used alongside this class. */
+.node-handle-accent:hover,
+.node-handle-accent:focus-visible {
+  background-color: var(--handle-accent) !important;
+}
+
 /* Context-aware canvas cursor (PHASE-UI-EFFECTS-2.md #10, `canvas-panel.tsx`) — a pointer-only,
    purely additive affordance. Scoped to `.qn-canvas-cursor` (the Node Canvas's own container in
    `canvas-panel.tsx`) so it never touches `character-relationship-graph.tsx`'s separate

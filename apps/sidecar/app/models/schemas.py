@@ -144,6 +144,11 @@ class UndoActionRead(BaseModel):
     created_at: str
 
 
+class UndoStatusRead(BaseModel):
+    can_undo: bool
+    can_redo: bool
+
+
 # ── Screenplay elements (docs/03-DATA-MODEL.md `screenplay_elements`; docs/01) ────
 # NOTE: these coexist with Scene.description — adding/editing elements must NEVER
 # clear or touch it (non-destructive conversion between prose and screenplay form).

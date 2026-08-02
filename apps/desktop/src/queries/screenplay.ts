@@ -135,13 +135,18 @@ export function useSceneRevisions(sceneId: string | undefined) {
  * so every call site shows its own undo-able toast instead (`queries/undo.ts`'s
  * `showUndoToast`) rather than a plain "deleted" toast a caller can't attach an Undo action
  * to. Callers that don't need Undo (e.g. `node-editor.tsx`'s drawer-close delete) toast
- * themselves in their own `mutate(...)` `onSuccess`. */
+ * themselves in their own `mutate(...)` `onSuccess`.
+ *
+ * Also invalidates `['undo-status']` broadly (no `bookId` param here, same as the `['canvas']`
+ * invalidate above) — a fresh delete writes a new `UndoLog` row, so every open Book's
+ * `useUndoStatus` (queries/undo.ts) needs to refetch to reflect the now-available Undo. */
 export function useDeleteScene() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (sceneId: string) => api.delete(`/scenes/${sceneId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['canvas'] })
+      queryClient.invalidateQueries({ queryKey: ['undo-status'] })
     },
     onError: () => toast.error('Could not delete the scene'),
   })

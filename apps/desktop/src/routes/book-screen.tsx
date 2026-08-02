@@ -129,7 +129,7 @@ export function BookScreen() {
           {tab === 'canvas' && (
             <div className="flex items-center gap-2">
               <fieldset className="card-style-toggle flex items-center gap-0.5 rounded-md border p-0.5">
-                <legend className="sr-only">Card style</legend>
+                <legend className="sr-only">Scene shape</legend>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <label
@@ -150,10 +150,10 @@ export function BookScreen() {
                         className="sr-only"
                       />
                       <RectangleHorizontal className="size-3.5" aria-hidden="true" />
-                      <span className="sr-only">Rectangle cards</span>
+                      <span className="sr-only">Rectangle scene cards</span>
                     </label>
                   </TooltipTrigger>
-                  <TooltipContent>Rectangle cards</TooltipContent>
+                  <TooltipContent>Rectangle scene cards</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -175,10 +175,10 @@ export function BookScreen() {
                         className="sr-only"
                       />
                       <Square className="size-3.5" aria-hidden="true" />
-                      <span className="sr-only">Square cards</span>
+                      <span className="sr-only">Square scene cards</span>
                     </label>
                   </TooltipTrigger>
-                  <TooltipContent>Square cards</TooltipContent>
+                  <TooltipContent>Square scene cards</TooltipContent>
                 </Tooltip>
                 <span
                   aria-hidden="true"

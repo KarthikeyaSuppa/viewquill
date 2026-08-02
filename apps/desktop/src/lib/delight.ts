@@ -179,3 +179,20 @@ export function isFirstNodeMilestone(): boolean {
   window.localStorage.setItem(FIRST_NODE_FLAG_KEY, '1')
   return true
 }
+
+// ── Connect-handle onboarding hint (one-time) ──────────────────────────────────────────
+// Same check-then-set-in-one-call localStorage pattern as `isFirstNodeMilestone` above —
+// `NodeHandles` (components/canvas/nodes.tsx) calls this once via a `useState` lazy
+// initializer, so of every node's `NodeHandles` mounted in that first render pass, only
+// the very first one to actually run the initializer gets `true` back; every other node
+// (this session or any future one) gets `false` forever after.
+
+const CONNECT_HINT_FLAG_KEY = 'quillnight_connect_hint_seen'
+
+/** True the very first time this is called (and persists that fact); false forever after. */
+export function isFirstConnectHint(): boolean {
+  if (typeof window === 'undefined') return false
+  if (window.localStorage.getItem(CONNECT_HINT_FLAG_KEY) === '1') return false
+  window.localStorage.setItem(CONNECT_HINT_FLAG_KEY, '1')
+  return true
+}

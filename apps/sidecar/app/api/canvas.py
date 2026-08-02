@@ -25,6 +25,7 @@ from app.models.schemas import (
     LinkUpdate,
     SceneRead,
     UndoActionRead,
+    UndoStatusRead,
 )
 from app.services import (
     book_service,
@@ -213,6 +214,13 @@ def _to_undo_action_read(undo_log) -> UndoActionRead:
         undone_at=undo_log.undone_at,
         created_at=undo_log.created_at,
     )
+
+
+@router.get("/books/{book_id}/undo-status", response_model=UndoStatusRead)
+def get_undo_status(book_id: str, db: Session = Depends(get_db)) -> UndoStatusRead:
+    _require_book(db, book_id)
+    status_dict = undo_service.get_undo_status(db, book_id)
+    return UndoStatusRead(**status_dict)
 
 
 @router.post("/books/{book_id}/undo", response_model=UndoActionRead)
