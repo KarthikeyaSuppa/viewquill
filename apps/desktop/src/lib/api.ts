@@ -214,11 +214,26 @@ export interface CanvasEdge {
   target_handle: string | null
   connection_type: ConnectionType | null
   label: string | null
+  /** Nullable rendering/sort hint marking this edge as part of the lineage/sequence view
+   * (vs. an arbitrary free-form connection); NULL is the default and means "not lineage".
+   * Nothing writes this yet — it's rendered read-only per `InkEdge`. */
+  sequence_weight: number | null
 }
 
 export interface CanvasResponse {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
+}
+
+/** Mirrors app/models/schemas.py UndoActionRead — the row popped/re-applied by
+ * `POST /books/{book_id}/undo` and `/redo` (PHASE11.md Workstream B task 7/10). Scoped to the
+ * single most-recent undoable action for the Book, not a deep history stack. */
+export interface UndoAction {
+  id: string
+  action_type: string
+  scene_id: string | null
+  undone_at: string | null
+  created_at: string
 }
 
 // ── Codex (mirrors app/models/schemas.py CodexEntry*; docs/06 Phase 2 tasks B1/B2, H3).

@@ -97,17 +97,51 @@ export function useReorderElements(sceneId: string | undefined) {
   })
 }
 
+/** Mirrors app/models/schemas.py SceneRevisionRead (docs/03, PHASE11.md Workstream B's
+ * scene-revision history) — a snapshot of a Scene's title/description/status taken on each
+ * edit, newest-first. `change_source` distinguishes how the revision was produced
+ * (`manual_edit`/`enhance_accept`/`ai_merge`/`restore`, per the backend's writers). Read-only
+ * from the frontend today — nothing here creates or restores a revision. */
+export interface SceneRevision {
+  id: string
+  revision_number: number
+  title: string
+  description: string | null
+  status: string | null
+  change_source: string
+  parent_revision_id: string | null
+  note: string | null
+  created_at: string
+}
+
+/** Fetches one Scene's revision history, newest-first (server-sorted). Used by the canvas
+ * node's ⋯ menu "History" item (`components/canvas/nodes.tsx`) — read-only, no restore
+ * action exists yet (that needs its own backend endpoint). */
+export function useSceneRevisions(sceneId: string | undefined) {
+  return useQuery({
+    queryKey: ['scene-revisions', sceneId],
+    queryFn: () => api.get<SceneRevision[]>(`/scenes/${sceneId}/revisions`),
+    enabled: !!sceneId,
+  })
+}
+
 /** Deletes a Scene permanently — everywhere it's linked, including all its screenplay
  * elements. This is NOT the same as unlinking from one Book's canvas (see
  * useRemoveFromCanvas in queries/canvas.ts) — callers must keep the two visually and
- * textually distinct so a user never confuses "unlink" with "delete forever". */
+ * textually distinct so a user never confuses "unlink" with "delete forever".
+ *
+ * Deliberately does NOT toast on success itself (unlike this file's other mutations) — the
+ * backend now writes an `UndoLog` tombstone before deleting (PHASE11.md Workstream B task 7),
+ * so every call site shows its own undo-able toast instead (`queries/undo.ts`'s
+ * `showUndoToast`) rather than a plain "deleted" toast a caller can't attach an Undo action
+ * to. Callers that don't need Undo (e.g. `node-editor.tsx`'s drawer-close delete) toast
+ * themselves in their own `mutate(...)` `onSuccess`. */
 export function useDeleteScene() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (sceneId: string) => api.delete(`/scenes/${sceneId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['canvas'] })
-      toast.success('Scene deleted permanently')
     },
     onError: () => toast.error('Could not delete the scene'),
   })

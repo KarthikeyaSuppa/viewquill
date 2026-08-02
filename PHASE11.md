@@ -1,7 +1,10 @@
 # Phase 11 — Canvas lifecycle overhaul + cross-cutting bug fixes
 
-Status: Workstream A done (2026-07-30). Workstream B (git-tree ordering,
-revision history, AI-assisted merge, undo/redo) designed, not yet built.
+Status: Done (2026-07-31). Workstream A (bug fixes) landed 2026-07-30;
+Workstream B (git-tree ordering, revision history, AI-assisted merge,
+undo/redo) designed and built 2026-07-31, including an Opus reviewer pass
+on the merge/undo writer that caught and fixed 2 real data-integrity bugs
+before landing.
 
 ## Why
 
@@ -88,33 +91,79 @@ design for this app.
    already linked to the current Book — selecting one attaches it with no
    backend changes needed.
 
-## Workstream B — canvas node lifecycle overhaul (designed, not built)
+## Workstream B — canvas node lifecycle overhaul (done)
 
-Full design (Opus pass) covers: no third ordering concept (canvas edges
-stay free-form, chronological order stays in `BookSceneOrder`, only a new
-nullable `SceneConnection.sequence_weight` for lineage-styled edges); a
-lightweight append-only `scene_revisions` + `scene_merges` history (not
-literal git — pre-image snapshots + merge-provenance rows, enough to render
-a per-node commit list); AI-assisted merge reusing the Enhance seam exactly
-(`build_merge_prompt`, `POST /llm/merge-scenes`, `enhance-diff.tsx` reused
-verbatim for Accept/Reject, never silent); and scoped (not global) undo/redo
-via one `undo_log` table + `BookSceneLink.archived_at` soft-delete, surfaced
-as an undo-toast after any delete or merge-accept — which also subsumes both
-known delete-consistency bugs (keyboard-delete currently only unlinks
-instead of permanently deleting, unlike the confirmed-dialog path). 17-task
-backend→frontend build list, not started — next up.
+No third ordering concept was introduced: canvas edges stay free-form
+(`SceneConnection`), chronological order stays exactly where it already
+lived (`BookSceneOrder.timeline_order_index`); the only ordering addition
+is a nullable `SceneConnection.sequence_weight` int, rendered on canvas as
+a thicker, more opaque, directional-arrowhead edge when set (`ink-edge.tsx`)
+— nothing writes it yet, it exists for a future feature to populate.
 
-## Verification (Workstream A)
+**History**: two new append-only tables, `scene_revisions` (a pre-image
+snapshot written before every title/description/status edit, self-chained
+via `parent_revision_id`, `change_source` ∈ manual_edit/enhance_accept/
+ai_merge/restore) and `scene_merges` (one row per source absorbed into a
+merge, with frozen title/description snapshots). `GET /scenes/{id}/revisions`
+exposes the history; each canvas node's `⋯` menu now has a read-only
+"History" list.
+
+**AI-assisted merge**: shift-click 2+ canvas nodes → a "Merge selected (N)"
+button → `build_merge_prompt()` (same fixed system→codex→content→task shape
+as Enhance's prompt) → `POST /llm/merge-scenes` streams a suggested merged
+title+description → the existing `enhance-diff.tsx` Accept/Reject component
+is reused verbatim (only two label props added, no new diff UI) → Accept
+calls `POST /llm/merge-scenes/accept` → `accept_merge()` creates the new
+Scene + its first revision + `scene_merges` provenance rows, archives (never
+hard-deletes) each source's canvas link, positions the new node at the
+sources' midpoint — all in one transaction, all reversible. Reject makes
+zero backend calls.
+
+**Undo/redo**: scoped to the last one destructive/merge action per book
+(not a global stack), via one `undo_log` table + `BookSceneLink.archived_at`
+soft-delete. `POST /books/{id}/undo`/`/redo` toggle the same log row.
+Surfaced as a toast with an Undo button after every delete or merge-accept
+(4 call sites: keyboard delete, the node-card delete confirm, the
+node-editor drawer's delete confirm, and merge-accept) — clicking Undo
+shows a brief follow-up Redo toast. This also fixed the two known
+delete-consistency bugs: keyboard Delete/Backspace now calls the same
+permanent (and now undoable) delete the confirm dialogs use, instead of a
+weaker unlink-only path.
+
+**Opus reviewer pass** on `accept_merge()`/`undo_service.py` (multi-row
+data-integrity write, same posture as `bundle_import.py`) found and fixed
+2 MUST-FIX issues before this was considered done: (1) `SceneMerge`'s FK to
+a source scene was `ON DELETE CASCADE`, silently destroying the merge
+provenance record if a surviving source was later hard-deleted — changed to
+`SET NULL`, contradicting the table's own documented "survives even if the
+source is later deleted" guarantee; (2) undo/redo silently no-op'd (still
+reporting success) if an expected `BookSceneLink` row was missing — now
+raises and maps to a 409 instead of a false-success response. Also fixed a
+`SHOULD-FIX`: `undo_log` selection ordering had only 1-second timestamp
+resolution with no tiebreaker, risking undoing the wrong action if two
+happened in the same second — added a monotonic `sequence` column.
+
+Two smaller related gaps were also fixed (started by the user directly from
+spawned follow-up suggestions during this same session): `canvas_service.py`
+now filters `archived_at IS NULL` so an archived/merged-away source can't be
+accidentally re-deleted or repositioned through the ordinary canvas API
+while dormant; and the scene delete-tombstone payload now also captures a
+deleted scene's `SceneRevision`/`SceneMerge` rows, so that history survives
+a delete+undo cycle instead of being lost to cascade-delete.
+
+## Verification
 
 - Backend: `QUILLNIGHT_LLM_STUB=1 QUILLNIGHT_STT_STUB=1 pytest -q` (cwd
-  `apps/sidecar`) — 351 passed, 2 failed (both the known pre-existing
-  cross-module test-ordering failures documented since Phase 10, unrelated
-  — Workstream A made no backend changes).
+  `apps/sidecar`) — 385 passed, 2 failed throughout Workstream B's build
+  (both the known pre-existing cross-module test-ordering failures
+  documented since Phase 10, unrelated). A `test_images.py` timestamp-
+  tiebreak flake surfaced a few times mid-build (same-second `created_at`
+  non-deterministic ordering) — tracked separately as its own follow-up,
+  confirmed unrelated to Workstream B every time it was re-run in isolation.
 - Frontend: `npm run build` / `npm run lint` (cwd `apps/desktop`) — both
-  clean, only pre-existing warnings.
-- Manual/live confirmation of each fix is still pending from the user
-  directly in the running app (dev server localhost:1420, sidecar
-  127.0.0.1:8756) — this session's Browser tool can't reliably screenshot
-  or simulate every click here, so live confirmation continues to depend
-  on the user checking the app themselves, per the established pattern
-  this session.
+  clean throughout, only pre-existing warnings.
+- Manual/live confirmation of every fix and the new merge/undo/history UI
+  is still pending from the user directly in the running app (dev server
+  localhost:1420, sidecar 127.0.0.1:8756) — this session's Browser tool
+  can't reliably screenshot or simulate every click here, so live
+  confirmation continues to depend on the user checking the app themselves.

@@ -863,8 +863,8 @@ def test_list_for_entity_orders_non_null_order_index_first_then_null_fallback(
 
     ordered_second = _upload(client, display_name="ordered-second")["id"]
     ordered_first = _upload(client, display_name="ordered-first")["id"]
-    null_newer = _upload(client, display_name="null-newer")["id"]
     null_older = _upload(client, display_name="null-older")["id"]
+    null_newer = _upload(client, display_name="null-newer")["id"]
 
     for image_id in (ordered_second, ordered_first, null_newer, null_older):
         _attach(client, image_id, "book", book_id)

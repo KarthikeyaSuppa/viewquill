@@ -139,3 +139,76 @@ def test_enhance_never_writes_to_the_referenced_scene(client: TestClient) -> Non
     scene_after = client.get(f"/scenes/{scene_id}")
     assert scene_after.status_code == 200
     assert scene_after.json()["description"] == original_description
+
+
+def _stream_merge(client: TestClient, payload: dict):
+    with client.stream("POST", "/llm/merge-scenes", json=payload) as response:
+        lines = list(response.iter_lines())
+        return response.status_code, response.headers, _parse_sse(lines)
+
+
+def test_merge_scenes_streams_same_sse_shape_as_enhance(client: TestClient) -> None:
+    book_resp = client.post("/books", json={"title": "Merge Book", "book_type": "story_book"})
+    assert book_resp.status_code == 201
+    book_id = book_resp.json()["id"]
+
+    scene_a = client.post(
+        "/scenes", json={"node_type": "scene", "title": "Scene A", "description": "First half."}
+    )
+    scene_b = client.post(
+        "/scenes", json={"node_type": "scene", "title": "Scene B", "description": "Second half."}
+    )
+    assert scene_a.status_code == 201
+    assert scene_b.status_code == 201
+    scene_a_id = scene_a.json()["id"]
+    scene_b_id = scene_b.json()["id"]
+    scene_a_desc = scene_a.json()["description"]
+    scene_b_desc = scene_b.json()["description"]
+
+    status_code, headers, events = _stream_merge(
+        client, {"scene_ids": [scene_a_id, scene_b_id], "book_id": book_id}
+    )
+
+    assert status_code == 200
+    assert headers["content-type"].startswith("text/event-stream")
+
+    delta_events = [e for e in events if e["event"] is None]
+    assert delta_events, "expected at least one delta event"
+    assert all("delta" in e["data"] and "provider" in e["data"] for e in delta_events)
+
+    done_events = [e for e in events if e["event"] == "done"]
+    assert len(done_events) == 1
+    log_id = done_events[0]["data"]["log_id"]
+    assert log_id
+    assert done_events[0]["data"]["provider"] == "ollama"
+
+    # Confirm the audit row was written with the new request_type, and that this
+    # suggest-only endpoint never touched either source scene.
+    accept_resp = client.post(f"/llm/log/{log_id}/accept", json={"accepted": True})
+    assert accept_resp.status_code == 200
+    assert accept_resp.json()["request_type"] == "merge"
+
+    scene_a_after = client.get(f"/scenes/{scene_a_id}")
+    scene_b_after = client.get(f"/scenes/{scene_b_id}")
+    assert scene_a_after.status_code == 200
+    assert scene_b_after.status_code == 200
+    assert scene_a_after.json()["description"] == scene_a_desc
+    assert scene_b_after.json()["description"] == scene_b_desc
+
+
+def test_merge_scenes_missing_scene_id_returns_404(client: TestClient) -> None:
+    book_resp = client.post("/books", json={"title": "Merge Book 2", "book_type": "story_book"})
+    book_id = book_resp.json()["id"]
+
+    resp = client.post(
+        "/llm/merge-scenes", json={"scene_ids": ["does-not-exist"], "book_id": book_id}
+    )
+    assert resp.status_code == 404
+
+
+def test_merge_scenes_empty_scene_ids_returns_422(client: TestClient) -> None:
+    book_resp = client.post("/books", json={"title": "Merge Book 3", "book_type": "story_book"})
+    book_id = book_resp.json()["id"]
+
+    resp = client.post("/llm/merge-scenes", json={"scene_ids": [], "book_id": book_id})
+    assert resp.status_code == 422

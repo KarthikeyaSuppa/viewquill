@@ -24,8 +24,15 @@ from app.models.schemas import (
     LinkCreate,
     LinkUpdate,
     SceneRead,
+    UndoActionRead,
 )
-from app.services import book_service, canvas_service, canvas_template_service, scene_service
+from app.services import (
+    book_service,
+    canvas_service,
+    canvas_template_service,
+    scene_service,
+    undo_service,
+)
 
 router = APIRouter(tags=["canvas"])
 
@@ -189,3 +196,47 @@ def copy_scene(dest_book_id: str, scene_id: str, db: Session = Depends(get_db)) 
     if new_scene is None:
         raise HTTPException(status_code=404, detail="Scene not found")
     return SceneRead.model_validate(new_scene)
+
+
+# ── Scoped undo/redo (Workstream B task 7, PHASE11.md) ────────────────────────
+
+
+def _to_undo_action_read(undo_log) -> UndoActionRead:
+    scene_id = None
+    scene_payload = undo_log.payload.get("scene") if undo_log.payload else None
+    if scene_payload:
+        scene_id = scene_payload.get("id")
+    return UndoActionRead(
+        id=undo_log.id,
+        action_type=undo_log.action_type,
+        scene_id=scene_id,
+        undone_at=undo_log.undone_at,
+        created_at=undo_log.created_at,
+    )
+
+
+@router.post("/books/{book_id}/undo", response_model=UndoActionRead)
+def undo_last_action(book_id: str, db: Session = Depends(get_db)) -> UndoActionRead:
+    _require_book(db, book_id)
+    try:
+        undo_log = undo_service.undo_last_action(db, book_id)
+    except ValueError as exc:
+        # e.g. UNDO_TARGET_ROW_MISSING — the recorded row to restore is gone (hard-deleted
+        # or otherwise removed via an ordinary, non-undo path since the action being
+        # undone). A conflict with the current DB state, not a bad request — 409, not 400.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if undo_log is None:
+        raise HTTPException(status_code=404, detail="Nothing to undo for this Book")
+    return _to_undo_action_read(undo_log)
+
+
+@router.post("/books/{book_id}/redo", response_model=UndoActionRead)
+def redo_last_action(book_id: str, db: Session = Depends(get_db)) -> UndoActionRead:
+    _require_book(db, book_id)
+    try:
+        undo_log = undo_service.redo_last_action(db, book_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if undo_log is None:
+        raise HTTPException(status_code=404, detail="Nothing to redo for this Book")
+    return _to_undo_action_read(undo_log)

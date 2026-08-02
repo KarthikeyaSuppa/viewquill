@@ -47,6 +47,7 @@ import {
   type ScreenplayElement,
   type ScreenplayElementType,
 } from '@/queries/screenplay'
+import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
 import { acceptLog, useEnhance } from '@/queries/enhance'
 import {
   imageThumbUrl,
@@ -102,6 +103,8 @@ export function NodeEditor({ bookId, bookType, node, onClose }: NodeEditorProps)
   const updateScene = useUpdateScene(bookId)
   const removeFromCanvas = useRemoveFromCanvas(bookId)
   const deleteScene = useDeleteScene()
+  const undoLastAction = useUndoLastAction(bookId)
+  const redoLastAction = useRedoLastAction(bookId)
 
   const [title, setTitle] = useState('')
   const [status, setStatus] = useState<string>('draft')
@@ -136,7 +139,16 @@ export function NodeEditor({ bookId, bookType, node, onClose }: NodeEditorProps)
 
   function handleDeletePermanently() {
     if (!sceneId) return
-    deleteScene.mutate(sceneId, { onSuccess: () => onClose() })
+    deleteScene.mutate(sceneId, {
+      onSuccess: () => {
+        onClose()
+        showUndoToast(
+          'Scene deleted permanently',
+          () => undoLastAction.mutate(),
+          () => redoLastAction.mutate(),
+        )
+      },
+    })
   }
 
   return (

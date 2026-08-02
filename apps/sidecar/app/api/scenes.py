@@ -15,6 +15,7 @@ from app.db.base import get_db
 from app.models.schemas import (
     SceneCreate,
     SceneRead,
+    SceneRevisionRead,
     SceneUpdate,
     ScreenplayElementCreate,
     ScreenplayElementRead,
@@ -63,6 +64,16 @@ def update_scene(scene_id: str, payload: SceneUpdate, db: Session = Depends(get_
 def delete_scene(scene_id: str, db: Session = Depends(get_db)) -> None:
     if not scene_service.delete_scene(db, scene_id):
         raise HTTPException(status_code=404, detail="Scene not found")
+
+
+@router.get("/{scene_id}/revisions", response_model=list[SceneRevisionRead])
+def list_revisions(scene_id: str, db: Session = Depends(get_db)) -> list[SceneRevisionRead]:
+    if scene_service.get_scene(db, scene_id) is None:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    return [
+        SceneRevisionRead.model_validate(revision)
+        for revision in scene_service.list_revisions(db, scene_id)
+    ]
 
 
 # ── Screenplay elements — nested under a scene (docs/03, docs/06 task A6) ────────

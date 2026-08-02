@@ -47,8 +47,16 @@ def new_uuid() -> str:
 
 
 def utcnow_iso() -> str:
-    """Timestamps are stored as ISO-8601 UTC text (the schema uses TEXT columns)."""
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    """Timestamps are stored as ISO-8601 UTC text (the schema uses TEXT columns).
+
+    Microsecond precision (not just seconds) so that rows created in quick succession —
+    e.g. several images uploaded back-to-back — get distinct `created_at` values instead
+    of colliding on the same second. Several services order by `created_at DESC, id DESC`
+    (entity_images_service.list_for_entity/gather_book_images, images_service.list_images)
+    where `id` is a random uuid4; a same-second collision made that fallback effectively
+    random instead of recency-based.
+    """
+    return datetime.now(UTC).isoformat(timespec="microseconds")
 
 
 _settings = get_settings()

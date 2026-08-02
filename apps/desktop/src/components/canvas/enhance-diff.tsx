@@ -17,6 +17,14 @@ export interface EnhanceDiffProps {
   isStreaming?: boolean
   /** True while the caller's own PATCH (the actual write) is in flight after Accept. */
   acceptPending?: boolean
+  /** Overrides the "Enhancing…" label shown in the header while `isStreaming` is true —
+   * lets other Accept/Reject callers built on this same component (e.g. the canvas
+   * multi-node merge dialog, PHASE11.md task 11) show task-appropriate copy without
+   * forking a duplicate component. Defaults to Enhance's own original copy. */
+  streamingLabel?: string
+  /** Overrides the "Review the suggestion" label shown once streaming completes — same
+   * rationale as `streamingLabel`. */
+  reviewLabel?: string
   /** The ONLY path in this component that hands text back to the caller. The caller is
    * expected to PATCH the real Scene/element with this text — this component itself
    * never calls a mutation. */
@@ -42,6 +50,8 @@ export function EnhanceDiff({
   provider,
   isStreaming = false,
   acceptPending = false,
+  streamingLabel = 'Enhancing…',
+  reviewLabel = 'Review the suggestion',
   onAccept,
   onReject,
   onEditFurther,
@@ -87,7 +97,7 @@ export function EnhanceDiff({
     <div className="glass glass-edge flex flex-col gap-3 rounded-xl p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">
-          {isStreaming ? 'Enhancing…' : 'Review the suggestion'}
+          {isStreaming ? streamingLabel : reviewLabel}
         </span>
         {provider && (
           <Badge variant="secondary" className="gap-1">

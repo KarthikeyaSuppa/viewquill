@@ -51,6 +51,7 @@ from app.models.orm import (
     CodexEntry,
     CodexRelationship,
     CodexSceneLink,
+    Scene,
 )
 
 Mode = Literal["grammar", "prose", "continuity"]
@@ -92,6 +93,26 @@ _TEMPERATURE_BY_MODE: dict[Mode, float] = {
 
 _ENTRY_SEPARATOR = "\n---\n"
 _EMPTY_CODEX_BLOCK = "## CODEX CONTEXT ##\n(no codex entries linked)"
+
+# ── Merge task instruction — static, sits AFTER the variable (labeled multi-scene) text ───
+# Output shape mirrors the plain-text convention of `_TASK_INSTRUCTIONS` above (no JSON,
+# just a predictable delimited plain-text shape) so a later response parser can split on
+# the "TITLE:"/"DESCRIPTION:" markers the same way callers already just take the model's
+# raw text for grammar/prose/continuity.
+_MERGE_TASK_INSTRUCTION = (
+    "Task: the text above contains multiple source scenes, each introduced by a "
+    "'--- Scene: <title> ---' label, in story order. Combine ALL of them into ONE "
+    "coherent merged scene. Preserve every plot-relevant detail from every source scene "
+    "above and the codex context provided earlier — do not invent new plot facts, "
+    "characters, or events. Do not simply concatenate the source text; rewrite it into "
+    "one continuous scene. Output only the merged result, in exactly this format, with "
+    "no additional commentary:\n\n"
+    "TITLE: <merged scene title>\n"
+    "DESCRIPTION:\n"
+    "<merged scene description>"
+)
+
+_SCENE_LABEL_TEMPLATE = "--- Scene: {title} ---\n{description}"
 
 
 @dataclass(frozen=True)
@@ -359,5 +380,94 @@ def build_enhance_prompt(
         ChatMessage(role="system", content=codex_block),
         ChatMessage(role="user", content=text),
         ChatMessage(role="user", content=_TASK_INSTRUCTIONS[mode]),
+    ]
+    return [m.as_dict() for m in messages]
+
+
+def _resolve_merge_order(
+    db: Session, *, book_id: str, scenes: list[Scene]
+) -> list[Scene]:
+    """Deterministic source-scene order for a merge (PHASE11.md Workstream B task 8):
+    ``book_scene_order.timeline_order_index`` when EVERY given scene has one recorded
+    for this Book, else fall back to ``Scene.created_at``. This is an all-or-nothing
+    choice (not a per-scene mixed key) so the ordering signal is never half-trusted —
+    either the whole group has a reliable chronological placement, or none of it does.
+    """
+    order_rows = db.execute(
+        select(BookSceneOrder.scene_id, BookSceneOrder.timeline_order_index).where(
+            BookSceneOrder.book_id == book_id,
+            BookSceneOrder.scene_id.in_([s.id for s in scenes]),
+        )
+    ).all()
+    timeline_index_by_scene_id = {
+        scene_id: index for scene_id, index in order_rows if index is not None
+    }
+
+    if len(timeline_index_by_scene_id) == len(scenes):
+        return sorted(scenes, key=lambda s: timeline_index_by_scene_id[s.id])
+    return sorted(scenes, key=lambda s: (s.created_at, s.id))
+
+
+def build_merge_prompt(
+    db: Session,
+    scene_ids: list[str],
+    *,
+    book_id: str,
+) -> list[dict[str, str]]:
+    """Assemble the ordered chat-message list for an AI-assisted multi-scene merge
+    (PHASE11.md Workstream B, "AI-assisted merge reusing the Enhance seam exactly").
+
+    Same hard order as :func:`build_enhance_prompt` (module docstring): [static system]
+    -> [codex block] -> [variable multi-scene text] -> [task instruction]. Returns the
+    same plain ``{"role","content"}`` dict shape so `llm_orchestrator.py`/the future
+    ``POST /llm/merge-scenes`` route can pass this straight through unchanged.
+
+    ``scene_ids`` must all resolve to existing ``Scene`` rows — raises
+    ``ValueError("SCENE_NOT_FOUND")`` (same sentinel `outline_service.py` uses) the
+    moment any id doesn't. ``book_id`` scopes both the codex context and the
+    ``book_scene_order`` lookup used for deterministic source ordering — merging is a
+    per-Book canvas operation, the same way `build_enhance_prompt`'s codex context is
+    scoped to one (scene_id, book_id) pair.
+    """
+    if not scene_ids:
+        raise ValueError("SCENE_IDS_REQUIRED")
+
+    scenes_by_id = {
+        scene.id: scene
+        for scene in db.execute(select(Scene).where(Scene.id.in_(scene_ids))).scalars()
+    }
+    missing = [scene_id for scene_id in scene_ids if scene_id not in scenes_by_id]
+    if missing:
+        raise ValueError("SCENE_NOT_FOUND")
+
+    # De-duplicate while preserving first-seen order, in case a caller passes the same
+    # scene_id twice — a merge should never absorb the same source scene's text twice.
+    unique_scenes = list({scene_id: scenes_by_id[scene_id] for scene_id in scene_ids}.values())
+    ordered_scenes = _resolve_merge_order(db, book_id=book_id, scenes=unique_scenes)
+
+    # Codex context: union across all source scenes, each resolved via the SAME
+    # anti-spoiler-aware `build_codex_context` Enhance uses (module docstring "Anti-spoiler
+    # rule") — no new scoping rule invented here. Scenes are walked in the deterministic
+    # (earliest-first) order just established, and an entry id is kept from the FIRST
+    # (earliest) scene it's resolved for — the conservative choice, since a later scene's
+    # arc-state resolution could otherwise leak a fact that hasn't happened yet from an
+    # earlier source scene's point of view into the merged block.
+    codex_entries_by_id: dict[str, dict[str, Any]] = {}
+    for scene in ordered_scenes:
+        for entry in build_codex_context(db, scene_id=scene.id, book_id=book_id):
+            codex_entries_by_id.setdefault(entry["id"], entry)
+    codex_block = serialize_codex_block(list(codex_entries_by_id.values()))
+
+    labeled_scenes = [
+        _SCENE_LABEL_TEMPLATE.format(title=scene.title, description=scene.description or "")
+        for scene in ordered_scenes
+    ]
+    combined_scene_text = "\n\n".join(labeled_scenes)
+
+    messages = [
+        ChatMessage(role="system", content=SYSTEM_PROMPT),
+        ChatMessage(role="system", content=codex_block),
+        ChatMessage(role="user", content=combined_scene_text),
+        ChatMessage(role="user", content=_MERGE_TASK_INSTRUCTION),
     ]
     return [m.as_dict() for m in messages]

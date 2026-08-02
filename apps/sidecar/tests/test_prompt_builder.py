@@ -421,3 +421,203 @@ def test_temperature_for():
     assert prompt_builder.temperature_for("prose") == 0.7
     with pytest.raises(ValueError):
         prompt_builder.temperature_for("not_a_mode")  # type: ignore[arg-type]
+
+
+# ── build_merge_prompt (PHASE11.md Workstream B task 8) ───────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def seeded_for_merge():
+    """One Book with three scenes placed out of insertion order on the timeline
+    (``timeline_order_index`` 2, 0, 1 for scene_a/b/c respectively) plus a Codex character
+    linked to two of the three scenes, so both the ordering and codex-union logic have
+    something non-trivial to prove."""
+    db = SessionLocal()
+    try:
+        book = Book(title="Merge Test Book", book_type="story_book")
+        db.add(book)
+
+        scene_a = Scene(node_type="scene", title="Scene A", description="A happens.")
+        scene_b = Scene(node_type="scene", title="Scene B", description="B happens.")
+        scene_c = Scene(node_type="scene", title="Scene C", description="C happens.")
+        db.add_all([scene_a, scene_b, scene_c])
+        db.flush()
+
+        # Insertion order is A, B, C but timeline order is B(0), C(1), A(2).
+        db.add_all(
+            [
+                prompt_builder.BookSceneOrder(
+                    book_id=book.id, scene_id=scene_a.id, timeline_order_index=2
+                ),
+                prompt_builder.BookSceneOrder(
+                    book_id=book.id, scene_id=scene_b.id, timeline_order_index=0
+                ),
+                prompt_builder.BookSceneOrder(
+                    book_id=book.id, scene_id=scene_c.id, timeline_order_index=1
+                ),
+            ]
+        )
+
+        character = CodexEntry(
+            entry_type="character", name="Nia", summary="A wandering cartographer."
+        )
+        db.add(character)
+        db.flush()
+        db.add_all(
+            [
+                CodexSceneLink(codex_entry_id=character.id, scene_id=scene_a.id),
+                CodexSceneLink(codex_entry_id=character.id, scene_id=scene_b.id),
+            ]
+        )
+        db.commit()
+
+        return {
+            "book_id": book.id,
+            "scene_a_id": scene_a.id,
+            "scene_b_id": scene_b.id,
+            "scene_c_id": scene_c.id,
+            "character_id": character.id,
+        }
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_same_shape_as_enhance(seeded_for_merge):
+    db = SessionLocal()
+    try:
+        merge_msgs = prompt_builder.build_merge_prompt(
+            db,
+            [seeded_for_merge["scene_a_id"], seeded_for_merge["scene_b_id"]],
+            book_id=seeded_for_merge["book_id"],
+        )
+        enhance_msgs = prompt_builder.build_enhance_prompt(
+            db,
+            mode="prose",
+            text="irrelevant",
+            scene_id=seeded_for_merge["scene_a_id"],
+            book_id=seeded_for_merge["book_id"],
+        )
+        # Same section count and same role sequence: system, system, user, user.
+        assert len(merge_msgs) == len(enhance_msgs) == 4
+        assert [m["role"] for m in merge_msgs] == [m["role"] for m in enhance_msgs]
+        assert all(set(m.keys()) == {"role", "content"} for m in merge_msgs)
+        # Static system prompt is reused verbatim.
+        assert merge_msgs[0]["content"] == prompt_builder.SYSTEM_PROMPT
+        assert merge_msgs[0] == enhance_msgs[0]
+        # Codex block uses the same serialization/header.
+        assert "## CODEX CONTEXT ##" in merge_msgs[1]["content"]
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_respects_timeline_order_index(seeded_for_merge):
+    db = SessionLocal()
+    try:
+        msgs = prompt_builder.build_merge_prompt(
+            db,
+            [
+                seeded_for_merge["scene_a_id"],
+                seeded_for_merge["scene_b_id"],
+                seeded_for_merge["scene_c_id"],
+            ],
+            book_id=seeded_for_merge["book_id"],
+        )
+        combined_text = msgs[2]["content"]
+        # Timeline order is B(0), C(1), A(2) — NOT the insertion/argument order (A, B, C).
+        assert combined_text.index("--- Scene: Scene B ---") < combined_text.index(
+            "--- Scene: Scene C ---"
+        )
+        assert combined_text.index("--- Scene: Scene C ---") < combined_text.index(
+            "--- Scene: Scene A ---"
+        )
+        assert "B happens." in combined_text
+        assert "C happens." in combined_text
+        assert "A happens." in combined_text
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_falls_back_to_created_at_when_order_missing():
+    """When at least one source scene has no ``book_scene_order`` row (or a null
+    ``timeline_order_index``), ordering must fall back to ``created_at`` for the WHOLE
+    group — not a per-scene mixed key."""
+    db = SessionLocal()
+    try:
+        book = Book(title="Merge Fallback Book", book_type="story_book")
+        db.add(book)
+
+        scene_first = Scene(
+            node_type="scene",
+            title="First Created",
+            description="Created first.",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        scene_second = Scene(
+            node_type="scene",
+            title="Second Created",
+            description="Created second.",
+            created_at="2026-01-02T00:00:00Z",
+        )
+        db.add_all([scene_first, scene_second])
+        db.flush()
+        # Only scene_first gets a book_scene_order row -> the group is NOT fully ordered,
+        # so both scenes must fall back to created_at.
+        db.add(
+            prompt_builder.BookSceneOrder(
+                book_id=book.id, scene_id=scene_first.id, timeline_order_index=99
+            )
+        )
+        db.commit()
+
+        msgs = prompt_builder.build_merge_prompt(
+            db, [scene_second.id, scene_first.id], book_id=book.id
+        )
+        combined_text = msgs[2]["content"]
+        assert combined_text.index("--- Scene: First Created ---") < combined_text.index(
+            "--- Scene: Second Created ---"
+        )
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_deterministic_across_calls(seeded_for_merge):
+    db = SessionLocal()
+    try:
+        scene_ids = [seeded_for_merge["scene_a_id"], seeded_for_merge["scene_b_id"]]
+        msgs_1 = prompt_builder.build_merge_prompt(
+            db, scene_ids, book_id=seeded_for_merge["book_id"]
+        )
+        msgs_2 = prompt_builder.build_merge_prompt(
+            db, scene_ids, book_id=seeded_for_merge["book_id"]
+        )
+        assert msgs_1 == msgs_2
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_missing_scene_id_raises(seeded_for_merge):
+    db = SessionLocal()
+    try:
+        with pytest.raises(ValueError, match="SCENE_NOT_FOUND"):
+            prompt_builder.build_merge_prompt(
+                db,
+                [seeded_for_merge["scene_a_id"], "does-not-exist"],
+                book_id=seeded_for_merge["book_id"],
+            )
+    finally:
+        db.close()
+
+
+def test_build_merge_prompt_task_instruction_is_static_and_last(seeded_for_merge):
+    db = SessionLocal()
+    try:
+        msgs = prompt_builder.build_merge_prompt(
+            db,
+            [seeded_for_merge["scene_a_id"], seeded_for_merge["scene_b_id"]],
+            book_id=seeded_for_merge["book_id"],
+        )
+        assert msgs[3]["content"] == prompt_builder._MERGE_TASK_INSTRUCTION
+        assert "TITLE:" in msgs[3]["content"]
+        assert "DESCRIPTION:" in msgs[3]["content"]
+    finally:
+        db.close()

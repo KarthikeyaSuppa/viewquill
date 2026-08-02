@@ -112,6 +112,7 @@ class BookSceneLink(Base):
     canvas_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     color: Mapped[str | None] = mapped_column(String, nullable=True)
     added_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
+    archived_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 # ── Node-graph edges, scoped per Book ─────────────────────────────────────────
@@ -132,6 +133,10 @@ class SceneConnection(Base):
     target_handle: Mapped[str | None] = mapped_column(String, nullable=True)
     connection_type: Mapped[str | None] = mapped_column(String, nullable=True)
     label: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Rendering/sort hint only: NULL = not part of the lineage view (default for all
+    # existing edges). Distinguishes lineage/sequence edges from free-form connections.
+    # Unrelated to BookSceneOrder's chronological ordering.
+    sequence_weight: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Chapter(Base):
@@ -332,6 +337,101 @@ class DraftVersion(Base):
     is_current: Mapped[int] = mapped_column(Integer, default=0)
     generated_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SceneRevision(Base):
+    """Append-only per-scene history ("commit") row — Workstream B git-like history.
+
+    Snapshots ``Scene.title``/``description``/``status`` at the moment of the change so
+    history/diff/restore can work even after the live Scene row moves on. ``parent_revision_id``
+    self-references the prior revision in the chain (nullable — the first revision has none);
+    ``ON DELETE SET NULL`` so pruning an ancestor never cascades into losing later history.
+    """
+
+    __tablename__ = "scene_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "change_source IN ('manual_edit','enhance_accept','ai_merge','restore')",
+            name="change_source",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    scene_id: Mapped[str] = mapped_column(
+        ForeignKey("scenes.id", ondelete="CASCADE"), nullable=False
+    )
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
+    change_source: Mapped[str] = mapped_column(String, nullable=False)
+    parent_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scene_revisions.id", ondelete="SET NULL"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
+
+
+class SceneMerge(Base):
+    """One row per source Scene absorbed into a merged Scene — Workstream B AI-assisted merge.
+
+    N:1 with the resulting merged scene: a single merge produces one ``merged_scene_id`` and
+    one row here per ``source_scene_id`` it absorbed. Snapshot columns freeze the source's
+    title/description at merge time so the merge remains inspectable even if the source Scene
+    is later hard-deleted. Both FKs are ``ON DELETE SET NULL`` (nullable), mirroring
+    ``SceneRevision.parent_revision_id``'s self-referential pattern above: a hard-delete of
+    either the merged Scene or a source Scene (via the ordinary ``DELETE /scenes/{id}`` path —
+    sources are meant to survive a merge as ordinary scenes, and nothing stops the merged scene
+    itself from later being deleted the same way) must never cascade away this row, since the
+    frozen snapshot columns are exactly what's supposed to survive that.
+    """
+
+    __tablename__ = "scene_merges"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    merged_scene_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scenes.id", ondelete="SET NULL"), nullable=True
+    )
+    source_scene_id: Mapped[str | None] = mapped_column(
+        ForeignKey("scenes.id", ondelete="SET NULL"), nullable=True
+    )
+    source_snapshot_title: Mapped[str] = mapped_column(String, nullable=False)
+    source_snapshot_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
+
+
+class UndoLog(Base):
+    """Last reversible destructive/AI action per Book — Workstream B scoped undo.
+
+    Stores just enough reconstruction data in ``payload`` (JSON) to reverse one
+    ``action_type`` of action (``delete_scene`` / ``merge_scenes``); ``undone_at`` is
+    set once the action has been reversed so the same entry isn't replayed twice.
+    """
+
+    __tablename__ = "undo_log"
+    __table_args__ = (
+        CheckConstraint(
+            "action_type IN ('delete_scene','merge_scenes')",
+            name="action_type",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_uuid)
+    book_id: Mapped[str] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    action_type: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
+    undone_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Secondary, strictly-increasing tiebreaker for ``created_at`` ordering — ``created_at``
+    # (via ``utcnow_iso``) only has 1-second resolution, so two actions logged in the same
+    # second are otherwise ambiguous to order; ``id`` is a uuid4 string (not creation-ordered),
+    # so it can't serve as the tiebreaker either. NOT the primary key (``id`` already is that);
+    # populated in Python at insert time (``undo_service.next_sequence``), the same
+    # compute-max-then-add-one pattern ``SceneRevision.revision_number`` already uses in
+    # ``scene_service.py``, rather than relying on SQLite `AUTOINCREMENT` (which only applies
+    # to a table's single `INTEGER PRIMARY KEY` rowid alias — not available here since ``id``,
+    # the real primary key, is a TEXT uuid).
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class LlmRequestLog(Base):

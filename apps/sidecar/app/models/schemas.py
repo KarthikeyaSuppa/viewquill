@@ -115,6 +115,35 @@ class SceneRead(BaseModel):
     updated_at: str
 
 
+# ── Scene revision history (Workstream B git-like history, PHASE11.md) — read-only
+# snapshots written by scene_service._record_revision_if_changed before each
+# title/description/status change. ────────────────────────────────────────────────
+class SceneRevisionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    revision_number: int
+    title: str
+    description: str | None
+    status: str | None
+    change_source: str
+    parent_revision_id: str | None
+    note: str | None
+    created_at: str
+
+
+# ── Scoped undo/redo (Workstream B task 7, PHASE11.md) — minimal confirmation shape for
+# POST /books/{book_id}/undo and /redo. ``scene_id`` is populated for ``delete_scene``
+# (the only action_type with a producer today); left ``None`` for any future action_type
+# whose payload doesn't center on a single scene.
+class UndoActionRead(BaseModel):
+    id: str
+    action_type: str
+    scene_id: str | None
+    undone_at: str | None
+    created_at: str
+
+
 # ── Screenplay elements (docs/03-DATA-MODEL.md `screenplay_elements`; docs/01) ────
 # NOTE: these coexist with Scene.description — adding/editing elements must NEVER
 # clear or touch it (non-destructive conversion between prose and screenplay form).
@@ -191,6 +220,10 @@ class CanvasEdge(BaseModel):
     target_handle: str | None
     connection_type: ConnectionType | None
     label: str | None
+    # Nullable rendering/sort hint distinguishing "this edge represents lineage/sequence"
+    # from an arbitrary free-form connection (default NULL = not part of the lineage view).
+    # No writer populates this yet — it exists for a future feature; the frontend only reads it.
+    sequence_weight: int | None
 
 
 class CanvasResponse(BaseModel):
@@ -520,6 +553,38 @@ class EnhanceRequest(BaseModel):
     field: str | None = None
     scene_id: str | None = None
     book_id: str | None = None
+
+
+class MergeScenesRequest(BaseModel):
+    """Request body for ``POST /llm/merge-scenes`` (PHASE11.md Workstream B, "AI-assisted
+    multi-node merge"). Mirrors `EnhanceRequest`'s minimal shape — no ``mode``/``text``
+    here since `prompt_builder.build_merge_prompt` derives the prompt entirely from the
+    source scenes + book_id, not free-form caller text."""
+
+    scene_ids: list[str] = Field(min_length=1)
+    book_id: str
+
+
+class MergeScenesAcceptRequest(BaseModel):
+    """Request body for ``POST /llm/merge-scenes/accept`` (PHASE11.md Workstream B task 11)
+    — the write the user triggers by clicking Accept on the ``/llm/merge-scenes`` SSE
+    suggestion. Field names match ``merge_service.accept_merge``'s keyword args exactly
+    (``source_scene_ids``/``merged_title``/``merged_description``) rather than
+    ``MergeScenesRequest``'s ``scene_ids``, since this is a distinct write-shaped request,
+    not another suggest-only call."""
+
+    book_id: str
+    source_scene_ids: list[str] = Field(min_length=1)
+    merged_title: str
+    merged_description: str
+
+
+class MergeScenesAcceptResponse(BaseModel):
+    """Response for ``POST /llm/merge-scenes/accept`` — the merged scene's new canvas node,
+    in the exact same ``CanvasNode`` shape ``GET /books/{id}/canvas`` returns, so the
+    frontend can drop it straight into React Flow state without a full canvas refetch."""
+
+    node: CanvasNode
 
 
 class LogAccept(BaseModel):

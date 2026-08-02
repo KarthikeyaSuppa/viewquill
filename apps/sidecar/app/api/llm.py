@@ -1,12 +1,15 @@
 """/llm — the Enhance streaming endpoint + its audit log (docs/04-LLM-INTEGRATION.md,
 docs/06 Phase 2 tasks D1/D2, docs/11-AI-INTELLIGENCE.md §5).
 
-DATA-SENSITIVE (flagged for a later `reviewer` pass, per CLAUDE.md): this router has NO
-code path that writes to `scenes` or `screenplay_elements`. `/llm/enhance` only reads
-text out of the request body + Codex context, streams a suggestion back over SSE, and
-writes exactly one row to `llm_request_log` (the audit trail). Accepting a suggestion into
-a Scene/element is a separate, explicit client-driven PATCH to `/scenes/...` — never
-implied here. `/llm/log/{id}/accept` only ever flips that one log row's `accepted` flag.
+DATA-SENSITIVE (flagged for a later `reviewer` pass, per CLAUDE.md): the streaming routes
+here have NO code path that writes to `scenes` or `screenplay_elements`. `/llm/enhance`
+only reads text out of the request body + Codex context, streams a suggestion back over
+SSE, and writes exactly one row to `llm_request_log` (the audit trail). Accepting a
+suggestion into a Scene/element is a separate, explicit client-driven write — for Enhance,
+a PATCH to `/scenes/...`; for a merge, the non-streaming `POST /llm/merge-scenes/accept`
+below (PHASE11.md Workstream B task 11), which delegates its entire write to
+`merge_service.accept_merge` (task 10) — never implied by either streaming route.
+`/llm/log/{id}/accept` only ever flips that one log row's `accepted` flag.
 
 ## The Groq key seam
 
@@ -30,20 +33,26 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import SessionLocal, get_db
+from app.models.orm import BookSceneLink
 from app.models.schemas import (
     EnhanceRequest,
     GroqKeyPresence,
     GroqKeySet,
     LlmLogRead,
     LogAccept,
+    MergeScenesAcceptRequest,
+    MergeScenesAcceptResponse,
+    MergeScenesRequest,
     TestConnectionResult,
 )
-from app.services import groq_key, llm_log_service
+from app.services import groq_key, llm_log_service, merge_service
+from app.services.canvas_service import to_canvas_node
 from app.services.llm_orchestrator import ProviderUnavailable, get_provider_client
-from app.services.prompt_builder import build_enhance_prompt, temperature_for
+from app.services.prompt_builder import build_enhance_prompt, build_merge_prompt, temperature_for
 from app.services.settings_service import get_all_settings
 
 router = APIRouter(prefix="/llm", tags=["llm"])
@@ -54,6 +63,24 @@ def _sse(event: str | None, data: dict) -> str:
     if event is None:
         return f"data: {payload}\n\n"
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _handle_value_error(exc: ValueError) -> HTTPException:
+    """Mirrors `api/outline.py`'s `_handle_value_error` — the repo's established pattern
+    for turning a service-layer `ValueError` sentinel into an HTTP error (module docstring
+    "sentinel pattern"), rather than inventing a second mechanism here."""
+    code = str(exc)
+    if code == "SCENE_NOT_FOUND":
+        return HTTPException(status_code=404, detail="Scene not found")
+    if code == "SCENE_IDS_REQUIRED":
+        return HTTPException(status_code=422, detail="scene_ids is required")
+    if code == "BOOK_NOT_FOUND":
+        return HTTPException(status_code=404, detail="Book not found")
+    if code == "SOURCE_SCENES_REQUIRED":
+        return HTTPException(status_code=422, detail="source_scene_ids is required")
+    if code == "SCENE_NOT_IN_BOOK":
+        return HTTPException(status_code=422, detail="Scene is not on this Book's canvas")
+    raise exc
 
 
 @router.post("/enhance")
@@ -143,6 +170,127 @@ async def enhance(
             log_db.close()
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post("/merge-scenes")
+async def merge_scenes(
+    payload: MergeScenesRequest, request: Request, db: Session = Depends(get_db)
+) -> StreamingResponse:
+    """Stream an AI-assisted multi-scene merge suggestion over SSE (PHASE11.md Workstream
+    B, "AI-assisted multi-node merge reusing the Enhance seam exactly").
+
+    Mirrors `/llm/enhance` EXACTLY: same SSE event shape (bare ``delta``/``provider``
+    events, then a single ``done`` event carrying ``log_id``, or an ``error`` event), same
+    audit-log timing (one `llm_request_log` row started before the stream, finished after),
+    same provider streaming mechanics via `llm_orchestrator.py` — only the prompt-assembly
+    call differs (`prompt_builder.build_merge_prompt` instead of `build_enhance_prompt`).
+    Like `/llm/enhance`, this endpoint ONLY streams a suggestion back for review — nothing
+    is written to `scenes`/`screenplay_elements` here; accepting a merge into the canvas is
+    a separate, later, explicit client action (PHASE11.md task 11), not implied by this
+    route.
+    """
+    settings = get_all_settings(db)
+    ai_mode = settings.get("ai_mode", "offline")
+    groq_model = settings.get("groq_model_name")
+    groq_zdr_enabled = settings.get("groq_zdr_enabled", True)
+    local_model_name = settings.get("local_model_name")
+
+    try:
+        messages = build_merge_prompt(db, payload.scene_ids, book_id=payload.book_id)
+    except ValueError as exc:
+        raise _handle_value_error(exc) from exc
+
+    temperature = temperature_for("continuity")
+
+    log_id = llm_log_service.start_log(
+        db,
+        request_type="merge",
+        entity_type=None,
+        entity_id=None,
+        book_id=payload.book_id,
+    )
+
+    # Dev seam (task F1/F2) — see module docstring "The Groq key seam".
+    resolved_groq_key = groq_key.get_key()
+
+    provider_client = get_provider_client()
+
+    async def gen() -> AsyncIterator[str]:
+        start = time.perf_counter()
+        last_provider = "ollama"
+        log_db = SessionLocal()
+        try:
+            async for chunk in provider_client.stream(
+                messages,
+                ai_mode=ai_mode,
+                groq_model=groq_model,
+                groq_key=resolved_groq_key,
+                groq_zdr_enabled=groq_zdr_enabled,
+                temperature=temperature,
+                is_disconnected=request.is_disconnected,
+            ):
+                last_provider = chunk["provider"]
+                yield _sse(None, {"delta": chunk["delta"], "provider": chunk["provider"]})
+
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            model_name = groq_model if last_provider == "groq" else local_model_name
+            llm_log_service.finish_log(
+                log_db,
+                log_id,
+                provider=last_provider,
+                model_name=model_name,
+                latency_ms=latency_ms,
+            )
+            yield _sse("done", {"provider": last_provider, "log_id": log_id})
+        except (ProviderUnavailable, Exception) as exc:  # noqa: BLE001 — stream-boundary catch-all
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            llm_log_service.finish_log(
+                log_db,
+                log_id,
+                provider=last_provider,
+                model_name=None,
+                latency_ms=latency_ms,
+            )
+            yield _sse("error", {"message": str(exc), "log_id": log_id})
+        finally:
+            log_db.close()
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post("/merge-scenes/accept", response_model=MergeScenesAcceptResponse)
+def accept_merge_scenes(
+    payload: MergeScenesAcceptRequest, db: Session = Depends(get_db)
+) -> MergeScenesAcceptResponse:
+    """Write the merge the user just reviewed from ``/llm/merge-scenes``'s SSE suggestion
+    into the canvas (PHASE11.md Workstream B task 11). Unlike `/llm/enhance` and
+    `/llm/merge-scenes` above, this is a plain synchronous write-then-respond POST — there
+    is no LLM/streaming call here at all, since `merge_service.accept_merge` is a single DB
+    transaction, not a model call. Nothing about this route depends on `ai_mode`, the Groq
+    key, or `QUILLNIGHT_LLM_STUB`.
+    """
+    try:
+        merged_scene = merge_service.accept_merge(
+            db,
+            book_id=payload.book_id,
+            source_scene_ids=payload.source_scene_ids,
+            merged_title=payload.merged_title,
+            merged_description=payload.merged_description,
+        )
+    except ValueError as exc:
+        raise _handle_value_error(exc) from exc
+
+    # accept_merge already committed the merged scene's BookSceneLink for this book — reuse
+    # canvas_service's exact node-serialization helper so the frontend can drop this node
+    # straight into React Flow state without a full canvas refetch.
+    link = db.execute(
+        select(BookSceneLink).where(
+            BookSceneLink.book_id == payload.book_id,
+            BookSceneLink.scene_id == merged_scene.id,
+            BookSceneLink.archived_at.is_(None),
+        )
+    ).scalar_one()
+    return MergeScenesAcceptResponse(node=to_canvas_node(link, merged_scene))
 
 
 @router.post("/log/{log_id}/accept", response_model=LlmLogRead)

@@ -3,19 +3,21 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
+  MarkerType,
   useEdgesState,
   useNodesState,
   useReactFlow,
   type Connection,
-  type Edge,
   type EdgeTypes,
   type NodeMouseHandler,
   type OnConnect,
   type OnEdgesDelete,
   type OnNodeDrag,
   type OnNodesDelete,
+  type OnSelectionChangeFunc,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import NumberFlow from '@number-flow/react'
@@ -27,6 +29,7 @@ import {
   Maximize,
   MapPinned,
   Minimize2,
+  Combine,
   Sparkles,
 } from 'lucide-react'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
@@ -35,16 +38,18 @@ import {
   useCreateEdge,
   useCreateNode,
   useDeleteEdge,
-  useRemoveFromCanvas,
   useUpdateNodePosition,
 } from '@/queries/canvas'
+import { useDeleteScene } from '@/queries/screenplay'
+import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
 import { useApplyCanvasTemplate, type CanvasTemplateKey } from '@/queries/canvas-templates'
 import { useBook } from '@/queries/books'
 import type { CanvasNode as CanvasNodeDto, NodeType } from '@/lib/api'
 import { nodeTypes, type CanvasNodeData, type SceneFlowNode } from '@/components/canvas/nodes'
 import { NodeEditor } from '@/components/canvas/node-editor'
+import { MergeDialog, type MergeSourceScene } from '@/components/canvas/merge-dialog'
 import { CodexPanel } from '@/components/canvas/codex-panel'
-import { InkEdge } from '@/components/canvas/ink-edge'
+import { InkEdge, type InkFlowEdge } from '@/components/canvas/ink-edge'
 import { Firefly } from '@/components/firefly'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -148,16 +153,49 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const isScriptBook = book?.book_type === 'movie_script' || book?.book_type === 'short_film_script'
   const createNode = useCreateNode(bookId)
   const updatePosition = useUpdateNodePosition(bookId)
-  const removeFromCanvas = useRemoveFromCanvas(bookId)
+  const deleteScene = useDeleteScene()
+  const undoLastAction = useUndoLastAction(bookId)
+  const redoLastAction = useRedoLastAction(bookId)
   const createEdge = useCreateEdge(bookId)
   const deleteEdge = useDeleteEdge(bookId)
   const applyTemplate = useApplyCanvasTemplate(bookId)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<SceneFlowNode>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<InkFlowEdge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { fitView } = useReactFlow()
+
+  // Multi-select for the AI-assisted merge feature (PHASE11.md Workstream B, "AI-assisted
+  // multi-node merge"), deliberately separate from `selectedNodeId` above (which drives the
+  // single-node `NodeEditor` drawer). Rather than build a custom accumulation mechanism,
+  // this reads xyflow's own native multi-select — `multiSelectionKeyCode="Shift"` below lets
+  // Shift-click accumulate `node.selected = true` across multiple nodes, and
+  // `onSelectionChange` mirrors that selection set into `mergeSelectedIds` here.
+  // `mergeCandidateIds` is the frozen snapshot handed to `MergeDialog` below once "Merge
+  // selected" is clicked — non-null means the dialog is open.
+  const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([])
+  const [mergeCandidateIds, setMergeCandidateIds] = useState<string[] | null>(null)
+
+  const handleSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: selected }) => {
+    setMergeSelectedIds(selected.map((node) => node.id))
+  }, [])
+
+  const handleMergeSelected = useCallback(() => {
+    setMergeCandidateIds(mergeSelectedIds)
+  }, [mergeSelectedIds])
+
+  // The source scenes' current title/description for `MergeDialog`'s "original" diff side —
+  // built straight from `nodes` (already loaded for the canvas render) rather than a fresh
+  // fetch. Recomputed only off the frozen `mergeCandidateIds` snapshot, so further
+  // shift-clicking while the dialog is open doesn't change what it's merging.
+  const mergeSourceScenes = useMemo<MergeSourceScene[]>(() => {
+    if (!mergeCandidateIds) return []
+    return mergeCandidateIds
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter((node): node is SceneFlowNode => node != null)
+      .map((node) => ({ id: node.data.sceneId, title: node.data.title, description: node.data.description }))
+  }, [mergeCandidateIds, nodes])
 
   // Keyboard-first node creation (docs/06 Phase 9 task 6, docs/14 §B "Keyboard-first node
   // creation"). Set by `handleAddNodeWithFocus` once the create mutation resolves with the
@@ -188,7 +226,15 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         targetHandle: edge.target_handle ?? undefined,
         label: edge.label ?? undefined,
         type: 'ink',
-        data: { connectionType: edge.connection_type },
+        // A closed arrowhead marks a lineage/sequence edge (non-null `sequence_weight`) as
+        // directed — plain edges (every edge today; nothing writes `sequence_weight` yet)
+        // get no marker at all, same as before this task. Must be set here (on the `Edge`
+        // object) rather than inside `InkEdge` itself — by the time `markerEnd` reaches an
+        // edge component's props it's already a resolved marker-id string, not the object
+        // xyflow needs to register the marker in the first place.
+        markerEnd:
+          edge.sequence_weight != null ? { type: MarkerType.ArrowClosed, color: 'var(--chart-4)' } : undefined,
+        data: { connectionType: edge.connection_type, sequenceWeight: edge.sequence_weight },
       })),
     )
   }, [canvas, isScriptBook, bookId, setNodes, setEdges])
@@ -224,15 +270,40 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
     [deleteEdge],
   )
 
+  // Keyboard-triggered delete (xyflow's native Backspace/Delete on selected node(s),
+  // `deleteKeyCode` below) now calls the SAME permanent-delete mutation the "Delete
+  // permanently" AlertDialog in `nodes.tsx`/`node-editor.tsx` uses, not the weaker
+  // unlink-only `useRemoveFromCanvas` (PHASE11.md Workstream B). This is intentional despite
+  // sounding more aggressive: `scene_service.delete_scene` now writes an `UndoLog` tombstone
+  // before deleting (task 7, `POST /books/{id}/undo`), so a keyboard delete is undoable — each
+  // deleted node gets its own discoverability toast with an Undo button (WS-B16, `showUndoToast`
+  // from `queries/undo.ts`). The backend only ever undoes the single most recent tombstone, so
+  // with a multi-node selection only the LAST one's Undo click actually restores anything — the
+  // toast still appears per node (matching how each is its own independent mutation) rather than
+  // building multi-level undo history UI, which is out of this task's scope.
   const handleNodesDelete: OnNodesDelete<SceneFlowNode> = useCallback(
     (removed) => {
-      removed.forEach((node) => removeFromCanvas.mutate(node.data.sceneId))
+      removed.forEach((node) =>
+        deleteScene.mutate(node.data.sceneId, {
+          onSuccess: () =>
+            showUndoToast(
+              `“${node.data.title}” deleted permanently`,
+              () => undoLastAction.mutate(),
+              () => redoLastAction.mutate(),
+            ),
+        }),
+      )
       setSelectedNodeId((current) => (removed.some((node) => node.id === current) ? null : current))
     },
-    [removeFromCanvas],
+    [deleteScene, undoLastAction, redoLastAction],
   )
 
-  const handleNodeClick: NodeMouseHandler<SceneFlowNode> = useCallback((_event, node) => {
+  const handleNodeClick: NodeMouseHandler<SceneFlowNode> = useCallback((event, node) => {
+    // A Shift-click is building a multi-select for the merge toolbar (see `mergeSelectedIds`
+    // above) — it must NOT also hijack the single-select `NodeEditor` drawer state, or every
+    // shift-click while accumulating a merge selection would yank the drawer open/closed.
+    // A plain click (no Shift) keeps opening the drawer exactly as before.
+    if (event.shiftKey) return
     setSelectedNodeId(node.id)
   }, [])
 
@@ -517,7 +588,17 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         {connectAnnouncement}
       </div>
 
-      <ReactFlow<SceneFlowNode, Edge>
+      <MergeDialog
+        bookId={bookId}
+        sourceSceneIds={mergeCandidateIds ?? []}
+        sourceScenes={mergeSourceScenes}
+        open={mergeCandidateIds !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setMergeCandidateIds(null)
+        }}
+      />
+
+      <ReactFlow<SceneFlowNode, InkFlowEdge>
         nodes={displayNodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -527,6 +608,8 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         onEdgesDelete={handleEdgesDelete}
         onNodesDelete={handleNodesDelete}
         onNodeClick={handleNodeClick}
+        onSelectionChange={handleSelectionChange}
+        multiSelectionKeyCode="Shift"
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'ink' }}
@@ -555,6 +638,24 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
           pannable
           zoomable
         />
+        {/* Merge toolbar (PHASE11.md Workstream B, "AI-assisted multi-node merge") — only
+            appears once 2+ nodes are Shift-selected via xyflow's own native multi-select
+            (see `mergeSelectedIds`/`handleSelectionChange` above). Rendered as a `Panel` the
+            same way `Controls`/`MiniMap` are, positioned clear of both. */}
+        {mergeSelectedIds.length >= 2 && (
+          <Panel position="bottom-center" className="!mb-4">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="glass glass-edge shadow-lg"
+              onClick={handleMergeSelected}
+            >
+              <Combine className="size-4" />
+              {`Merge selected (${mergeSelectedIds.length})`}
+            </Button>
+          </Panel>
+        )}
       </ReactFlow>
 
       {/* Ambient firefly (docs/10 §6, §5) — Night canvas only, and only at delight_level

@@ -4,6 +4,7 @@ import {
   Clapperboard,
   Copy,
   EllipsisVertical,
+  History as HistoryIcon,
   Image,
   Lightbulb,
   MapPinned,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -18,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,11 +33,89 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ScreenplayNode } from '@/components/canvas/screenplay-node'
 import { useCreateNode, useRemoveFromCanvas } from '@/queries/canvas'
-import { useDeleteScene } from '@/queries/screenplay'
+import { useDeleteScene, useSceneRevisions, type SceneRevision } from '@/queries/screenplay'
+import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
 import { imageThumbUrl, useEntityImages } from '@/queries/images'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCardStyleStore } from '@/stores/card-style'
 import type { NodeType } from '@/lib/api'
+
+/** Badge label for `SceneRevision.change_source` — falls back to the raw value verbatim for
+ * anything unrecognized (the backend is free to add sources later without breaking this UI). */
+const CHANGE_SOURCE_LABELS: Record<string, string> = {
+  manual_edit: 'Manual edit',
+  enhance_accept: 'Enhance accepted',
+  ai_merge: 'AI merge',
+  restore: 'Restored',
+}
+
+/** Same relative-time formatting as `formatGeneratedAt` in `src/components/draft/version-list.tsx`
+ * (itself matching `formatRelative` in `src/routes/library-screen.tsx`) — hand-duplicated per
+ * this codebase's existing convention of small per-file formatting helpers. */
+function formatRevisionTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMin = Math.round(diffMs / 60_000)
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHour = Math.round(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}h ago`
+  const diffDay = Math.round(diffHour / 24)
+  if (diffDay < 7) return `${diffDay}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** One row in the History popover — read-only, no restore/rollback action (that needs its
+ * own backend endpoint, out of scope here). */
+function RevisionRow({ revision }: { revision: SceneRevision }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-border/60 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-semibold text-foreground">Rev {revision.revision_number}</span>
+        <Badge variant="secondary" className="text-[10px]">
+          {CHANGE_SOURCE_LABELS[revision.change_source] ?? revision.change_source}
+        </Badge>
+        <span className="text-[11px] text-muted-foreground">{formatRevisionTime(revision.created_at)}</span>
+      </div>
+      <p className="line-clamp-1 text-xs font-medium text-foreground">{revision.title}</p>
+      {revision.description && (
+        <p className="line-clamp-2 text-[11px] text-muted-foreground">{revision.description}</p>
+      )}
+    </div>
+  )
+}
+
+/** The ⋯ menu's "History" popover content (PHASE11.md Workstream B) — a read-only list of
+ * one Scene's revision snapshots, newest-first (server-sorted, per `useSceneRevisions`).
+ * Not a `PopoverTrigger` itself — a Radix `Popover` can't nest its trigger inside a
+ * `DropdownMenu` item and stay open once that menu closes on select, so `BaseNode` instead
+ * controls an outer `Popover`'s `open` state directly (same controlled pattern as its
+ * delete `AlertDialog` below) and anchors it to the ⋯ trigger; this component is just the
+ * `PopoverContent` body. Only fetches once opened (`enabled` gates on the `open` flag it's
+ * passed) so idle nodes on a large canvas don't all fire a revisions request on mount. */
+function HistoryPopoverContent({ sceneId, open }: { sceneId: string; open: boolean }) {
+  const { data: revisions, isLoading } = useSceneRevisions(open ? sceneId : undefined)
+
+  return (
+    <PopoverContent
+      align="end"
+      className="max-h-80 w-80 overflow-y-auto"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <p className="mb-2 text-xs font-semibold text-muted-foreground">Edit history</p>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : !revisions || revisions.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No edit history yet.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {revisions.map((revision) => (
+            <RevisionRow key={revision.id} revision={revision} />
+          ))}
+        </div>
+      )}
+    </PopoverContent>
+  )
+}
 
 /** Shared per-node payload — canonical Scene fields plus this canvas's link id. */
 export interface CanvasNodeData extends Record<string, unknown> {
@@ -85,7 +166,10 @@ function BaseNode(
   const createNode = useCreateNode(data.bookId)
   const removeFromCanvas = useRemoveFromCanvas(data.bookId)
   const deleteScene = useDeleteScene()
+  const undoLastAction = useUndoLastAction(data.bookId)
+  const redoLastAction = useRedoLastAction(data.bookId)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // `useEntityImages` hits `GET /entities/scene/{id}/images`, which the sidecar's
   // `entity_images_service.list_for_entity` orders by `order_index IS NULL, order_index ASC,
@@ -190,27 +274,43 @@ function BaseNode(
               <TooltipContent>Duplicate</TooltipContent>
             </Tooltip>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-lg"
-                  className="rounded-full"
-                  aria-label="More actions"
-                  onClick={handleMenuTriggerClick}
-                >
-                  <EllipsisVertical className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => removeFromCanvas.mutate(data.sceneId)}>
-                  Remove from canvas
-                </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
-                  Delete permanently
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Controlled `Popover` wraps the whole `DropdownMenu`, anchored to it via
+                `PopoverAnchor` — a Radix `Popover` can't nest its trigger inside a
+                `DropdownMenuItem` and stay open past the menu's own close-on-select, so
+                "History" instead just flips `historyOpen` (mirrors `setDeleteOpen` below)
+                and this outer `Popover` opens anchored to the same ⋯ button. */}
+            <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+              <PopoverAnchor asChild>
+                <div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-lg"
+                        className="rounded-full"
+                        aria-label="More actions"
+                        onClick={handleMenuTriggerClick}
+                      >
+                        <EllipsisVertical className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
+                        <HistoryIcon className="size-3.5" />
+                        History
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => removeFromCanvas.mutate(data.sceneId)}>
+                        Remove from canvas
+                      </DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                        Delete permanently
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </PopoverAnchor>
+              <HistoryPopoverContent sceneId={data.sceneId} open={historyOpen} />
+            </Popover>
           </div>
         </div>
       </div>
@@ -251,7 +351,16 @@ function BaseNode(
               disabled={deleteScene.isPending}
               onClick={(event: MouseEvent<HTMLButtonElement>) => {
                 event.stopPropagation()
-                deleteScene.mutate(data.sceneId, { onSuccess: () => setDeleteOpen(false) })
+                deleteScene.mutate(data.sceneId, {
+                  onSuccess: () => {
+                    setDeleteOpen(false)
+                    showUndoToast(
+                      `“${data.title}” deleted permanently`,
+                      () => undoLastAction.mutate(),
+                      () => redoLastAction.mutate(),
+                    )
+                  },
+                })
               }}
             >
               Delete permanently

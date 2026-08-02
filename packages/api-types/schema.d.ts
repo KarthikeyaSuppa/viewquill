@@ -296,6 +296,23 @@ export interface paths {
         patch: operations["update_scene_scenes__scene_id__patch"];
         trace?: never;
     };
+    "/scenes/{scene_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_scenes__scene_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenes/{scene_id}/elements": {
         parameters: {
             query?: never;
@@ -466,6 +483,40 @@ export interface paths {
         put?: never;
         /** Copy Scene */
         post: operations["copy_scene_books__dest_book_id__scenes__scene_id__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Last Action */
+        post: operations["undo_last_action_books__book_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/books/{book_id}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redo Last Action */
+        post: operations["redo_last_action_books__book_id__redo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -853,6 +904,62 @@ export interface paths {
          *     so relying on ``db`` staying open across the whole stream would be fragile.
          */
         post: operations["enhance_llm_enhance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/merge-scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Scenes
+         * @description Stream an AI-assisted multi-scene merge suggestion over SSE (PHASE11.md Workstream
+         *     B, "AI-assisted multi-node merge reusing the Enhance seam exactly").
+         *
+         *     Mirrors `/llm/enhance` EXACTLY: same SSE event shape (bare ``delta``/``provider``
+         *     events, then a single ``done`` event carrying ``log_id``, or an ``error`` event), same
+         *     audit-log timing (one `llm_request_log` row started before the stream, finished after),
+         *     same provider streaming mechanics via `llm_orchestrator.py` — only the prompt-assembly
+         *     call differs (`prompt_builder.build_merge_prompt` instead of `build_enhance_prompt`).
+         *     Like `/llm/enhance`, this endpoint ONLY streams a suggestion back for review — nothing
+         *     is written to `scenes`/`screenplay_elements` here; accepting a merge into the canvas is
+         *     a separate, later, explicit client action (PHASE11.md task 11), not implied by this
+         *     route.
+         */
+        post: operations["merge_scenes_llm_merge_scenes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/merge-scenes/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Merge Scenes
+         * @description Write the merge the user just reviewed from ``/llm/merge-scenes``'s SSE suggestion
+         *     into the canvas (PHASE11.md Workstream B task 11). Unlike `/llm/enhance` and
+         *     `/llm/merge-scenes` above, this is a plain synchronous write-then-respond POST — there
+         *     is no LLM/streaming call here at all, since `merge_service.accept_merge` is a single DB
+         *     transaction, not a model call. Nothing about this route depends on `ai_mode`, the Groq
+         *     key, or `QUILLNIGHT_LLM_STUB`.
+         */
+        post: operations["accept_merge_scenes_llm_merge_scenes_accept_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1579,6 +1686,8 @@ export interface components {
             connection_type: ("sequence" | "causal" | "reference" | "contradiction" | "custom") | null;
             /** Label */
             label: string | null;
+            /** Sequence Weight */
+            sequence_weight: number | null;
         };
         /**
          * CanvasNode
@@ -2119,6 +2228,47 @@ export interface components {
             token: string;
             user: components["schemas"]["ProfilePublic"];
         };
+        /**
+         * MergeScenesAcceptRequest
+         * @description Request body for ``POST /llm/merge-scenes/accept`` (PHASE11.md Workstream B task 11)
+         *     — the write the user triggers by clicking Accept on the ``/llm/merge-scenes`` SSE
+         *     suggestion. Field names match ``merge_service.accept_merge``'s keyword args exactly
+         *     (``source_scene_ids``/``merged_title``/``merged_description``) rather than
+         *     ``MergeScenesRequest``'s ``scene_ids``, since this is a distinct write-shaped request,
+         *     not another suggest-only call.
+         */
+        MergeScenesAcceptRequest: {
+            /** Book Id */
+            book_id: string;
+            /** Source Scene Ids */
+            source_scene_ids: string[];
+            /** Merged Title */
+            merged_title: string;
+            /** Merged Description */
+            merged_description: string;
+        };
+        /**
+         * MergeScenesAcceptResponse
+         * @description Response for ``POST /llm/merge-scenes/accept`` — the merged scene's new canvas node,
+         *     in the exact same ``CanvasNode`` shape ``GET /books/{id}/canvas`` returns, so the
+         *     frontend can drop it straight into React Flow state without a full canvas refetch.
+         */
+        MergeScenesAcceptResponse: {
+            node: components["schemas"]["CanvasNode"];
+        };
+        /**
+         * MergeScenesRequest
+         * @description Request body for ``POST /llm/merge-scenes`` (PHASE11.md Workstream B, "AI-assisted
+         *     multi-node merge"). Mirrors `EnhanceRequest`'s minimal shape — no ``mode``/``text``
+         *     here since `prompt_builder.build_merge_prompt` derives the prompt entirely from the
+         *     source scenes + book_id, not free-form caller text.
+         */
+        MergeScenesRequest: {
+            /** Scene Ids */
+            scene_ids: string[];
+            /** Book Id */
+            book_id: string;
+        };
         /** OllamaHealth */
         OllamaHealth: {
             /** Reachable */
@@ -2199,6 +2349,27 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** SceneRevisionRead */
+        SceneRevisionRead: {
+            /** Id */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string | null;
+            /** Change Source */
+            change_source: string;
+            /** Parent Revision Id */
+            parent_revision_id: string | null;
+            /** Note */
+            note: string | null;
+            /** Created At */
+            created_at: string;
         };
         /** SceneSuggestionsResponse */
         SceneSuggestionsResponse: {
@@ -2366,6 +2537,19 @@ export interface components {
             in_story_time_label?: string | null;
             /** In Story Time Sort Key */
             in_story_time_sort_key?: number | null;
+        };
+        /** UndoActionRead */
+        UndoActionRead: {
+            /** Id */
+            id: string;
+            /** Action Type */
+            action_type: string;
+            /** Scene Id */
+            scene_id: string | null;
+            /** Undone At */
+            undone_at: string | null;
+            /** Created At */
+            created_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -3110,6 +3294,37 @@ export interface operations {
             };
         };
     };
+    list_revisions_scenes__scene_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scene_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRevisionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_elements_scenes__scene_id__elements_get: {
         parameters: {
             query?: never;
@@ -3626,6 +3841,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SceneRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_last_action_books__book_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoActionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redo_last_action_books__book_id__redo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                book_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UndoActionRead"];
                 };
             };
             /** @description Validation Error */
@@ -4625,6 +4902,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_scenes_llm_merge_scenes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeScenesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_merge_scenes_llm_merge_scenes_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeScenesAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeScenesAcceptResponse"];
                 };
             };
             /** @description Validation Error */

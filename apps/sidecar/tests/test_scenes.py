@@ -16,8 +16,11 @@ os.environ["QUILLNIGHT_DATA_DIR"] = _TMP_DATA_DIR
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
+from app.db.base import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.orm import ScreenplayElement, UndoLog  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -161,6 +164,128 @@ def test_screenplay_elements_never_touch_scene_description(client: TestClient) -
     assert scene_final.json()["description"] == original_description
 
 
+def test_update_scene_writes_revision_history(client: TestClient) -> None:
+    from app.db.base import SessionLocal
+    from app.models.orm import SceneRevision
+
+    create_resp = client.post(
+        "/scenes",
+        json={
+            "node_type": "scene",
+            "title": "Original Title",
+            "description": "Original description here.",
+        },
+    )
+    assert create_resp.status_code == 201
+    scene_id = create_resp.json()["id"]
+
+    # First edit — should snapshot the PRE-update (original) values as revision 1.
+    patch1 = client.patch(f"/scenes/{scene_id}", json={"title": "Revised Title"})
+    assert patch1.status_code == 200
+
+    with SessionLocal() as db:
+        revisions = (
+            db.query(SceneRevision)
+            .filter(SceneRevision.scene_id == scene_id)
+            .order_by(SceneRevision.revision_number)
+            .all()
+        )
+        assert len(revisions) == 1
+        rev1 = revisions[0]
+        assert rev1.revision_number == 1
+        assert rev1.change_source == "manual_edit"
+        assert rev1.parent_revision_id is None
+        assert rev1.title == "Original Title"
+        assert rev1.description == "Original description here."
+
+    # Second edit — should snapshot the state after edit 1 (pre-image of edit 2) as
+    # revision 2, chained to revision 1 via parent_revision_id.
+    patch2 = client.patch(
+        f"/scenes/{scene_id}",
+        json={"title": "Revised Again", "description": "New description."},
+    )
+    assert patch2.status_code == 200
+
+    with SessionLocal() as db:
+        revisions = (
+            db.query(SceneRevision)
+            .filter(SceneRevision.scene_id == scene_id)
+            .order_by(SceneRevision.revision_number)
+            .all()
+        )
+        assert len(revisions) == 2
+        rev2 = revisions[1]
+        assert rev2.revision_number == 2
+        assert rev2.parent_revision_id == rev1.id
+        assert rev2.title == "Revised Title"
+        assert rev2.description == "Original description here."
+
+    # A patch whose values are identical to what's already stored must not write a
+    # redundant revision row.
+    patch3 = client.patch(
+        f"/scenes/{scene_id}",
+        json={"title": "Revised Again", "description": "New description."},
+    )
+    assert patch3.status_code == 200
+    with SessionLocal() as db:
+        count = (
+            db.query(SceneRevision).filter(SceneRevision.scene_id == scene_id).count()
+        )
+        assert count == 2
+
+
+def test_list_revisions_empty_for_never_edited_scene(client: TestClient) -> None:
+    create_resp = client.post(
+        "/scenes", json={"node_type": "scene", "title": "Untouched Scene"}
+    )
+    assert create_resp.status_code == 201
+    scene_id = create_resp.json()["id"]
+
+    resp = client.get(f"/scenes/{scene_id}/revisions")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_revisions_returns_history_newest_first(client: TestClient) -> None:
+    create_resp = client.post(
+        "/scenes",
+        json={
+            "node_type": "scene",
+            "title": "History Scene",
+            "description": "First description.",
+        },
+    )
+    assert create_resp.status_code == 201
+    scene_id = create_resp.json()["id"]
+
+    patch1 = client.patch(f"/scenes/{scene_id}", json={"title": "History Scene v2"})
+    assert patch1.status_code == 200
+
+    patch2 = client.patch(
+        f"/scenes/{scene_id}",
+        json={"title": "History Scene v3", "description": "Second description."},
+    )
+    assert patch2.status_code == 200
+
+    resp = client.get(f"/scenes/{scene_id}/revisions")
+    assert resp.status_code == 200
+    revisions = resp.json()
+    assert len(revisions) == 2
+    assert [r["revision_number"] for r in revisions] == [2, 1]
+    assert revisions[0]["title"] == "History Scene v2"
+    assert revisions[0]["description"] == "First description."
+    assert revisions[1]["title"] == "History Scene"
+    assert revisions[1]["description"] == "First description."
+    assert revisions[0]["parent_revision_id"] == revisions[1]["id"]
+    assert revisions[1]["parent_revision_id"] is None
+    assert revisions[0]["change_source"] == "manual_edit"
+
+
+def test_list_revisions_missing_scene_404(client: TestClient) -> None:
+    resp = client.get("/scenes/does-not-exist/revisions")
+    assert resp.status_code == 404
+
+
 def test_elements_for_missing_scene_404(client: TestClient) -> None:
     assert client.get("/scenes/does-not-exist/elements").status_code == 404
     resp = client.post(
@@ -173,3 +298,75 @@ def test_elements_for_missing_scene_404(client: TestClient) -> None:
 def test_update_and_delete_missing_element_404(client: TestClient) -> None:
     assert client.patch("/scenes/elements/does-not-exist", json={"text": "x"}).status_code == 404
     assert client.delete("/scenes/elements/does-not-exist").status_code == 404
+
+
+# ── Workstream B task 6: permanent delete writes an undo tombstone ──────────────
+def test_permanent_delete_writes_undo_log_and_still_deletes_rows(client: TestClient) -> None:
+    book_resp = client.post("/books", json={"title": "Undo Book", "book_type": "story_book"})
+    assert book_resp.status_code == 201
+    book_id = book_resp.json()["id"]
+
+    scene_resp = client.post(
+        "/scenes",
+        json={
+            "node_type": "scene",
+            "title": "Scene To Delete",
+            "description": "Some prose.",
+        },
+    )
+    assert scene_resp.status_code == 201
+    scene_id = scene_resp.json()["id"]
+
+    link_resp = client.post(
+        f"/books/{book_id}/scenes/{scene_id}", json={"canvas_x": 5, "canvas_y": 6}
+    )
+    assert link_resp.status_code == 201
+
+    element_resp = client.post(
+        f"/scenes/{scene_id}/elements",
+        json={"element_type": "action", "text": "Someone walks in."},
+    )
+    assert element_resp.status_code == 201
+    element_id = element_resp.json()["id"]
+
+    delete_resp = client.delete(f"/scenes/{scene_id}")
+    assert delete_resp.status_code == 204
+
+    # Scene and its screenplay element are actually gone — no regression on the delete.
+    assert client.get(f"/scenes/{scene_id}").status_code == 404
+    with SessionLocal() as db:
+        remaining_elements = list(
+            db.execute(
+                select(ScreenplayElement).where(ScreenplayElement.scene_id == scene_id)
+            ).scalars()
+        )
+        assert remaining_elements == []
+
+        # Scoped by book_id, not just action_type — this suite shares one SQLite database
+        # across every test module in a full-suite run (see tests/conftest.py's module
+        # docstring), so an unscoped query here would also pick up "delete_scene" UndoLog
+        # rows written by other books in other test modules (e.g. tests/test_undo.py's
+        # revision/merge-history undo test).
+        undo_rows = list(
+            db.execute(
+                select(UndoLog).where(
+                    UndoLog.book_id == book_id, UndoLog.action_type == "delete_scene"
+                )
+            ).scalars()
+        )
+    assert len(undo_rows) == 1
+    undo_row = undo_rows[0]
+    assert undo_row.undone_at is None
+    assert undo_row.book_id == book_id
+
+    payload = undo_row.payload
+    assert payload["scene"]["id"] == scene_id
+    assert payload["scene"]["title"] == "Scene To Delete"
+    assert payload["scene"]["description"] == "Some prose."
+    assert len(payload["book_scene_links"]) == 1
+    assert payload["book_scene_links"][0]["book_id"] == book_id
+    assert payload["book_scene_links"][0]["scene_id"] == scene_id
+    assert payload["book_scene_links"][0]["canvas_x"] == 5
+    assert len(payload["screenplay_elements"]) == 1
+    assert payload["screenplay_elements"][0]["id"] == element_id
+    assert payload["screenplay_elements"][0]["text"] == "Someone walks in."

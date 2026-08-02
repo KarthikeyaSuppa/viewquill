@@ -42,7 +42,7 @@ def get_canvas(db: Session, book_id: str) -> CanvasResponse:
     rows = db.execute(
         select(BookSceneLink, Scene)
         .join(Scene, BookSceneLink.scene_id == Scene.id)
-        .where(BookSceneLink.book_id == book_id)
+        .where(BookSceneLink.book_id == book_id, BookSceneLink.archived_at.is_(None))
     ).all()
     nodes = [to_canvas_node(link, scene) for link, scene in rows]
     edges = [CanvasEdge.model_validate(edge) for edge in list_edges(db, book_id)]
@@ -52,7 +52,9 @@ def get_canvas(db: Session, book_id: str) -> CanvasResponse:
 def _get_link(db: Session, book_id: str, scene_id: str) -> BookSceneLink | None:
     return db.execute(
         select(BookSceneLink).where(
-            BookSceneLink.book_id == book_id, BookSceneLink.scene_id == scene_id
+            BookSceneLink.book_id == book_id,
+            BookSceneLink.scene_id == scene_id,
+            BookSceneLink.archived_at.is_(None),
         )
     ).scalar_one_or_none()
 

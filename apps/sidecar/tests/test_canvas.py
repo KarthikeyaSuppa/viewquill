@@ -347,6 +347,40 @@ def test_apply_canvas_template_404_for_missing_book(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+def test_archived_link_is_invisible_to_canvas_and_not_addressable(client: TestClient) -> None:
+    """Regression: an archived ``BookSceneLink`` (e.g. left behind by a scene merge, see
+    ``merge_service.accept_merge`` step 5) must disappear from ``GET .../canvas`` and must
+    not be reachable via PATCH/DELETE on ``/books/{book_id}/scenes/{scene_id}`` — otherwise a
+    link that's supposed to be dormant until undo could be repositioned or deleted directly.
+    """
+    book_id = _create_book(client, "Archived Link Book")
+    scene_id = _create_scene(client, "Archived Link Scene")
+
+    add_resp = client.post(f"/books/{book_id}/scenes/{scene_id}", json={"canvas_x": 5, "canvas_y": 5})
+    assert add_resp.status_code == 201
+
+    from app.db.base import SessionLocal, utcnow_iso
+    from app.services import canvas_service
+
+    with SessionLocal() as db:
+        link = canvas_service._get_link(db, book_id, scene_id)
+        assert link is not None
+        link.archived_at = utcnow_iso()
+        db.commit()
+
+    # Invisible to GET .../canvas.
+    canvas = client.get(f"/books/{book_id}/canvas")
+    assert all(n["scene_id"] != scene_id for n in canvas.json()["nodes"])
+
+    # Not addressable via PATCH...
+    patch_resp = client.patch(f"/books/{book_id}/scenes/{scene_id}", json={"canvas_x": 999})
+    assert patch_resp.status_code == 404
+
+    # ...or DELETE.
+    delete_resp = client.delete(f"/books/{book_id}/scenes/{scene_id}")
+    assert delete_resp.status_code == 404
+
+
 def test_canvas_and_edges_404_for_missing_book_or_scene(client: TestClient) -> None:
     assert client.get("/books/does-not-exist/canvas").status_code == 404
     assert client.post("/books/does-not-exist/scenes/also-missing").status_code == 404
