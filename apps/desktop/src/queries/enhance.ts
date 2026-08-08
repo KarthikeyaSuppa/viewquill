@@ -3,7 +3,7 @@ import { API_BASE, api } from '@/lib/api'
 
 /** Mirrors app/models/schemas.py EnhanceMode (docs/04-LLM-INTEGRATION.md, docs/06 Phase 2
  * tasks D1/H1). */
-export type EnhanceMode = 'grammar' | 'prose' | 'continuity'
+export type EnhanceMode = 'grammar' | 'prose' | 'continuity' | 'title'
 
 /** Mirrors app/services/llm_orchestrator.py ProviderName — which leg actually served the
  * streamed suggestion, shown to the user via the provider Badge in <EnhanceDiff/>. */

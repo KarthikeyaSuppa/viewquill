@@ -54,7 +54,7 @@ from app.models.orm import (
     Scene,
 )
 
-Mode = Literal["grammar", "prose", "continuity"]
+Mode = Literal["grammar", "prose", "continuity", "title"]
 
 # ── Static system prompt — NEVER interpolated with volatile data ──────────────────────────
 SYSTEM_PROMPT = (
@@ -83,12 +83,20 @@ _TASK_INSTRUCTIONS: dict[Mode, str] = {
         "provided earlier (contradicted traits, timeline inconsistencies, or facts "
         "inconsistent with the story bible). Cite the exact contradicting text verbatim."
     ),
+    "title": (
+        "Task: the text above is a scene description. Read it and generate ONE concise, "
+        "evocative scene title that captures its central action or image — a short noun "
+        "phrase, at most 8 words, no quotation marks, no trailing punctuation. Do not "
+        "invent plot facts beyond what is in the text above or the codex context provided "
+        "earlier. Output only the title — nothing else, no commentary or preamble."
+    ),
 }
 
 _TEMPERATURE_BY_MODE: dict[Mode, float] = {
     "grammar": 0.3,
     "continuity": 0.3,
     "prose": 0.7,
+    "title": 0.3,
 }
 
 _ENTRY_SEPARATOR = "\n---\n"
@@ -126,7 +134,7 @@ class ChatMessage:
 
 def temperature_for(mode: Mode) -> float:
     """Sampling temperature per mode (docs/04 "Enhance call flow"): 0.3 favors precision
-    for grammar/continuity, 0.7 gives more latitude for prose phrasing."""
+    for grammar/continuity/title, 0.7 gives more latitude for prose phrasing."""
     if mode not in _TEMPERATURE_BY_MODE:
         raise ValueError(f"Unknown Enhance mode: {mode!r}")
     return _TEMPERATURE_BY_MODE[mode]

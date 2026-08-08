@@ -57,8 +57,9 @@ Per `docs/06-ROADMAP.md` and the root `PHASE*.md` working directives:
 | **10** | **Semantic/RAG layer** | **This-machine slice done (2026-07-30)** — `search_fts`(FTS5)+`embeddings`(sqlite-vec vec0) schema, embed-on-save/backfill, hybrid RRF search (`GET /search`), auto codex-link + similar-scene suggestions, frontend search dialog (`Ctrl+K`) + suggestion panel — all proven against a deterministic stub embedding, not real semantics. Real `qwen3-embedding:0.6b` call, real backfill run, and the actual demo criteria remain on the ASUS TUF F15 (no Ollama here). See `PHASE10.md`, `HANDOFF-ASUS-TUF.md` §4c |
 | **11** | **Canvas lifecycle overhaul + cross-cutting bug fixes** | **Done (2026-07-31)** — Workstream A (bug fixes): node cover-image loading state, delete-reopens-panel fix, systemic dialog-height fix, NodeEditor drawer `min-h-0` scroll fix, canvas zoom bounds + bigger hit targets, retired the old Phase-2 MVP in-canvas Codex quick-panel's inline forms in favor of the full `CodexEntryDialog`, cross-book character attach-existing flow. Workstream B (new subsystem): `scene_revisions`/`scene_merges` append-only history tables + a per-node read-only History list, AI-assisted multi-node merge reusing the Enhance/`enhance-diff.tsx` Accept-Reject seam exactly, scoped (last-one-action) undo/redo via `undo_log` + soft-delete surfaced as an Undo/Redo toast on every delete/merge-accept, and a `sequence_weight` edge-rendering hint (no third ordering system — canvas edges and `BookSceneOrder` timeline order are untouched). Opus reviewer pass on the merge/undo writer caught and fixed 2 real data-integrity MUST-FIX bugs before landing. See `PHASE11.md`. |
 | **12** | **Node shapes, connection discoverability, persistent undo/redo, image-attach gap, suggestions removal** | **Done (2026-07-31)** — node shape now communicates node type (Scene keeps the user toggle relabeled "Scene shape," Plot Point fixed vertical-rectangle, Thought fixed square with rounder corners); canvas connection handles restyled to be always-partially-visible + a one-time "drag to connect" hint (connections themselves were already fully functional — this was a discoverability fix, not a functional one); a real persistent Undo/Redo button pair in the canvas chrome (new `GET /books/{id}/undo-status` backend endpoint, including a redo-staleness correctness fix); `SceneImagesSection` now renders for script-type Books too (was silently never rendering there); `SuggestionPanel` removed from the node editor per explicit user request (left dormant, not deleted); plus a scoped UI/UX audit (image-error icon, clickable thumbnails, template/upload/delete microcopy, and a stale "cannot be undone" copy fix in both delete-confirmation dialogs). See `PHASE12.md`. |
-| 13 (v1.1) | Full delight/voice polish | Not started |
-| 14 (v2.0) | Backlog | Not started |
+| **13** | **Character & node-editor redesign + governance** | **In progress (started 2026-08-02)** — Characters tab Timeline removed and its Map reworked into a read-only D3-style circular relationship graph; Canvas Codex moved from a floating card to a full-height left sidebar drawer with circular chips; node editor unified around an always-visible auto-resizing Description with Title Enhance, read-only Description History over `scene_revisions`, and a circular character-chip strip; new nodes appear at the last click position. Governance: authored `docs/16-PROTECTED-FEATURES.md` (strict, `spiderman`-locked) + `docs/17-CHARACTER-FLOW.md` and wired both into the Hard rules here and in `CLAUDE.md`. See `PHASE13.md` |
+| **14** | **Prebaked sample library** | **In progress (started 2026-08-08)** — wipes the 12 accumulated dev/test Books and ships four example Books (one per `book_type`) seeded at startup into an empty library: canvas graphs, Codex with relationships/arc states, chapters, outline beats, a flashback where timeline order diverges from outline order, screenplay elements, procedurally-generated images, continuity flags and revision chains — collectively covering nearly every enum value and structural edge case in the schema. Idempotent, marked by one global `sample_library` app-setting that also drives a "Sample" badge in the library. See `PHASE14.md` |
+| (v2.0) | Backlog | Not started — see `docs/06-ROADMAP.md` "v2.0 — Backlog" |
 
 Each `PHASE<N>.md` at repo root is a living working directive for the phase
 currently in progress (created fresh per phase per `CLAUDE.md`'s process),
@@ -204,6 +205,7 @@ Alembic env, `app/templates/` = Jinja2 + CSS used by the export pipeline.
 | `backups.py` (33, Phase 7) | `backup_service.py` (140, `VACUUM INTO` rotation, keep-N, WAL-aware `restore_backup`) | Rotating local full-DB snapshots. `POST /backups/run`, `GET /backups`, `POST /backups/{name}/restore`. **Startup + manual trigger only** — a true periodic timer was deliberately deferred to Phase 9 |
 | `health.py` (32) | `ollama_health.py` (28) | Liveness probes |
 | `structure_templates.py` (33) | `structure_templates.py` service (98) | Seeded book-structure templates (three-act, etc.) |
+| — (no route; startup only) | `sample_library/` package — `content.py` (pure data), `images.py` (deterministic Pillow art), `seeder.py` (`seed_sample_library`) | Phase 14 prebaked sample library. Runs in `main.py`'s lifespan right after `seed_structure_templates` (it resolves each Book's `structure_template_id` by name). Self-guarding: no-ops unless the global `sample_library` app-setting is absent **and** `books` is empty, so it never touches a real library and never resurrects deleted samples. Writes `SceneConnection` rows directly via ORM rather than `canvas_service.create_edge` — that helper also writes an `UndoLog` row, which would arm the canvas Undo button to delete sample content |
 
 **Models**: `models/orm.py` (441 ln, all SQLAlchemy tables), `models/schemas.py`
 (651 ln, all Pydantic request/response shapes — the single file to check for
@@ -303,9 +305,18 @@ skip-to-main link and one missing nav focus ring.
 - Conversions between book types are **additive, never destructive** — e.g.
   converting Single Scene → Movie Script adds `screenplay_elements` without
   deleting the original `description`.
+- **`docs/16-PROTECTED-FEATURES.md` lists strict, user-mandated features that must not be
+  removed or weakened**, and that file may only be edited when the user says the keyword
+  `spiderman` (Phase 13). See also `docs/17-CHARACTER-FLOW.md` for the character surfaces.
 
 ## 10. Known gaps (documented but not yet built)
 
+- **The library is no longer empty on a fresh install** (Phase 14) — startup seeds
+  four sample Books. To get a genuinely empty library for testing, run
+  `apps/sidecar/scripts/reset_library.py --yes` (takes a backup first, preserves
+  profiles/settings) and then delete the global `sample_library` app-setting row if
+  you also want the samples to come back on the next boot. Deleting the sample Books
+  from the UI is permanent — the marker stops them re-seeding.
 - **Tauri desktop shell** — no `src-tauri/` anywhere; the app currently runs
   as a plain Vite web app. Port 1420 is reserved for when this lands.
 - **Voice/STT (input)** — `services/speech_stt.py` still returns a fixed stub

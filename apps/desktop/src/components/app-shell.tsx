@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Library, LogOut, Search, Settings } from 'lucide-react'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { ThemePicker } from '@/components/theme-picker'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
 import { HelpGuide } from '@/components/help/help-guide'
@@ -146,7 +146,7 @@ export function AppShell() {
             </span>
             <LogOut className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
           </Button>
-          <ThemeToggle />
+          <ThemePicker />
         </div>
       </aside>
 

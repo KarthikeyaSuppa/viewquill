@@ -419,8 +419,36 @@ def test_temperature_for():
     assert prompt_builder.temperature_for("grammar") == 0.3
     assert prompt_builder.temperature_for("continuity") == 0.3
     assert prompt_builder.temperature_for("prose") == 0.7
+    assert prompt_builder.temperature_for("title") == 0.3
     with pytest.raises(ValueError):
         prompt_builder.temperature_for("not_a_mode")  # type: ignore[arg-type]
+
+
+# ── "title" mode (PHASE13 task C2) ────────────────────────────────────────────────────────
+
+
+def test_build_enhance_prompt_title_mode_returns_title_instruction(seeded):
+    db = SessionLocal()
+    try:
+        msgs = prompt_builder.build_enhance_prompt(
+            db,
+            mode="title",
+            text="She lifted the hammer and swung it in one clean arc.",
+            scene_id=seeded["scene_early_id"],
+            book_id=seeded["book_id"],
+        )
+        # Same fixed section ordering as every other mode: system, system(codex), user(text),
+        # user(task) — prefix-cache discipline must not change for a new mode.
+        assert len(msgs) == 4
+        assert [m["role"] for m in msgs] == ["system", "system", "user", "user"]
+        assert msgs[0]["content"] == prompt_builder.SYSTEM_PROMPT
+        assert "## CODEX CONTEXT ##" in msgs[1]["content"]
+        assert msgs[2]["content"] == "She lifted the hammer and swung it in one clean arc."
+        assert msgs[3]["content"] == prompt_builder._TASK_INSTRUCTIONS["title"]
+        assert "concise, evocative scene title" in msgs[3]["content"]
+        assert "Output only the title" in msgs[3]["content"]
+    finally:
+        db.close()
 
 
 # ── build_merge_prompt (PHASE11.md Workstream B task 8) ───────────────────────────────────

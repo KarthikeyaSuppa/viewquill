@@ -21,8 +21,8 @@ export function ScreenplayNode({ data, selected }: NodeProps<SceneFlowNode>) {
         selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
       )}
     >
-      <Handle id="top" type="target" position={Position.Top} className="!size-2.5 !border-2 !bg-background" />
-      <Handle id="left" type="target" position={Position.Left} className="!size-2.5 !border-2 !bg-background" />
+      <Handle id="top" type="source" position={Position.Top} className="!size-2.5 !border-2 !bg-background" />
+      <Handle id="left" type="source" position={Position.Left} className="!size-2.5 !border-2 !bg-background" />
       <Handle id="bottom" type="source" position={Position.Bottom} className="!size-2.5 !border-2 !bg-background" />
       <Handle id="right" type="source" position={Position.Right} className="!size-2.5 !border-2 !bg-background" />
       <div className="h-1.5 w-full bg-[oklch(0.6_0.19_25)]" />

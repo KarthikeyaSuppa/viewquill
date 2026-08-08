@@ -9,6 +9,14 @@ merged scene's link and each source's link — the merged ``Scene`` row and its
 ``SceneRevision``/``SceneMerge`` history rows are never deleted by either direction, since
 that history must survive even after an undo (see ``_restore_merge_scenes``).
 
+``create_edge``/``delete_edge``/``update_edge`` (written by ``canvas_service.py``'s edge
+CRUD, a separate task) round out the set: ``create_edge``/``delete_edge`` are hard
+create/destroy pairs following ``delete_scene``'s snapshot-based shape (undo/redo either
+re-insert or re-delete a full ``SceneConnection`` row from ``payload["edge"]``), while
+``update_edge`` follows ``merge_scenes``'s before/after toggle shape for the
+``connection_type``/``sequence_weight`` edit case (``payload["before"]``/``payload["after"]``
+dicts of just the changed columns).
+
 ``undo_last_action`` and ``redo_last_action`` toggle the SAME ``UndoLog`` row's ``undone_at``
 back and forth — undo sets it, redo clears it — rather than ever writing a second row. Redo
 never creates a new ``UndoLog`` entry (it would be recursive: redoing a delete is itself a
@@ -26,6 +34,7 @@ from app.db.base import utcnow_iso
 from app.models.orm import (
     BookSceneLink,
     Scene,
+    SceneConnection,
     SceneMerge,
     SceneRevision,
     ScreenplayElement,
@@ -252,6 +261,113 @@ def _redo_merge_scenes(db: Session, book_id: str, payload: dict[str, Any]) -> No
     db.commit()
 
 
+def _restore_create_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Reverse of creating a ``SceneConnection`` (canvas edge): the edge didn't exist
+    before, so undo just removes it again — the create/destroy mirror of
+    ``_restore_delete_scene``/``_redo_delete_scene``, but for the opposite direction (undo
+    destroys here instead of re-inserting).
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` if the edge ``canvas_service`` created is already
+    gone (e.g. deleted via the ordinary canvas-remove path since the create) — silently
+    no-op'ing would make undo report success without actually reversing anything.
+    """
+    edge_id = payload["edge"]["id"]
+    edge = db.get(SceneConnection, edge_id)
+    if edge is None:
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    db.delete(edge)
+    db.commit()
+
+
+def _redo_create_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Re-apply a previously-undone edge creation: re-insert the exact same
+    ``SceneConnection`` row (verbatim ``payload["edge"]`` dict — including ``id`` and
+    ``sequence_weight`` — never recomputed) rather than calling back into
+    ``canvas_service.create_connection``, mirroring ``_redo_delete_scene``'s "replay the
+    captured snapshot" shape.
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` if either Scene the edge points at (``source_scene_id``/
+    ``target_scene_id``) has been deleted since the edge was undone — without this guard,
+    re-inserting the row would trip SQLite's FK enforcement (``PRAGMA foreign_keys=ON``,
+    ``app/db/base.py``) and raise a raw, unhandled ``IntegrityError`` instead of this
+    module's clean 409 convention.
+    """
+    edge_values = payload["edge"]
+    if (
+        db.get(Scene, edge_values["source_scene_id"]) is None
+        or db.get(Scene, edge_values["target_scene_id"]) is None
+    ):
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    db.add(SceneConnection(**edge_values))
+    db.commit()
+
+
+def _restore_delete_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Reverse of deleting a ``SceneConnection``: re-insert the exact pre-delete row from
+    its captured snapshot — the edge equivalent of ``_restore_delete_scene``, but simpler
+    since no other table has a ``ForeignKey`` onto ``scene_connections.id`` (confirmed
+    against ``app/models/orm.py``), so there are no cascading children to reattach.
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` under the same condition as ``_redo_create_edge`` —
+    either endpoint Scene may have been deleted (via the ordinary scene-delete path) since
+    the edge was deleted, which would otherwise trip the same raw FK ``IntegrityError``.
+    """
+    edge_values = payload["edge"]
+    if (
+        db.get(Scene, edge_values["source_scene_id"]) is None
+        or db.get(Scene, edge_values["target_scene_id"]) is None
+    ):
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    db.add(SceneConnection(**edge_values))
+    db.commit()
+
+
+def _redo_delete_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Re-apply a previously-undone edge deletion: remove the same ``SceneConnection`` row
+    again — direct mirror of ``_redo_delete_scene``'s shape.
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` if the edge ``_restore_delete_edge`` re-inserted is
+    already gone (e.g. deleted again via the ordinary canvas-remove path since the undo).
+    """
+    edge_id = payload["edge"]["id"]
+    edge = db.get(SceneConnection, edge_id)
+    if edge is None:
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    db.delete(edge)
+    db.commit()
+
+
+def _restore_update_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Reverse of an in-place edge edit (e.g. the directional/undirected
+    ``connection_type`` toggle): apply the captured ``before`` values — the before/after
+    toggle shape ``_restore_merge_scenes``/``_redo_merge_scenes`` use, but for a single row's
+    changed columns instead of a set of ``BookSceneLink`` rows.
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` if the edge is gone (e.g. deleted via the ordinary
+    canvas-remove path since the update).
+    """
+    edge = db.get(SceneConnection, payload["edge_id"])
+    if edge is None:
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    for key, value in payload["before"].items():
+        setattr(edge, key, value)
+    db.commit()
+
+
+def _redo_update_edge(db: Session, payload: dict[str, Any]) -> None:
+    """Re-apply a previously-undone edge edit: apply the captured ``after`` values — the
+    exact mirror of ``_restore_update_edge``.
+
+    Raises ``UNDO_TARGET_ROW_MISSING`` under the same condition as ``_restore_update_edge``.
+    """
+    edge = db.get(SceneConnection, payload["edge_id"])
+    if edge is None:
+        raise ValueError(UNDO_TARGET_ROW_MISSING)
+    for key, value in payload["after"].items():
+        setattr(edge, key, value)
+    db.commit()
+
+
 def undo_last_action(db: Session, book_id: str) -> UndoLog | None:
     """Reverse the most recent not-yet-undone action for this Book, marking it undone.
 
@@ -265,6 +381,12 @@ def undo_last_action(db: Session, book_id: str) -> UndoLog | None:
         _restore_delete_scene(db, undo_log.payload)
     elif undo_log.action_type == "merge_scenes":
         _restore_merge_scenes(db, book_id, undo_log.payload)
+    elif undo_log.action_type == "create_edge":
+        _restore_create_edge(db, undo_log.payload)
+    elif undo_log.action_type == "delete_edge":
+        _restore_delete_edge(db, undo_log.payload)
+    elif undo_log.action_type == "update_edge":
+        _restore_update_edge(db, undo_log.payload)
 
     undo_log.undone_at = utcnow_iso()
     db.commit()
@@ -275,16 +397,38 @@ def undo_last_action(db: Session, book_id: str) -> UndoLog | None:
 def redo_last_action(db: Session, book_id: str) -> UndoLog | None:
     """Re-apply the most recently-undone action for this Book, marking it active again.
 
-    Returns ``None`` (caller 404s) if there's nothing undone left to redo for this Book.
+    Returns ``None`` (caller 404s) if there's nothing undone left to redo for this Book —
+    including when the most-recently-undone row is STALE (a newer destructive action has
+    happened for this Book since the undo). This mirrors ``get_undo_status``'s own
+    ``can_redo`` staleness check exactly (see its docstring): if some other ``UndoLog`` row
+    for this Book now has a higher ``sequence`` than the undone row, that row is no longer
+    the most recent action overall, and re-applying it would silently resurrect something
+    the user has since moved past — treated the same as "nothing to redo" rather than
+    attempted and left to fail (e.g. hitting the FK guards in
+    ``_redo_create_edge``/``_restore_delete_edge`` above).
     """
     undo_log = _latest_undone_undo_log(db, book_id)
     if undo_log is None:
+        return None
+
+    newer_row_exists = db.execute(
+        select(UndoLog.id).where(
+            UndoLog.book_id == book_id, UndoLog.sequence > undo_log.sequence
+        )
+    ).first()
+    if newer_row_exists is not None:
         return None
 
     if undo_log.action_type == "delete_scene":
         _redo_delete_scene(db, undo_log.payload)
     elif undo_log.action_type == "merge_scenes":
         _redo_merge_scenes(db, book_id, undo_log.payload)
+    elif undo_log.action_type == "create_edge":
+        _redo_create_edge(db, undo_log.payload)
+    elif undo_log.action_type == "delete_edge":
+        _redo_delete_edge(db, undo_log.payload)
+    elif undo_log.action_type == "update_edge":
+        _redo_update_edge(db, undo_log.payload)
 
     undo_log.undone_at = None
     db.commit()

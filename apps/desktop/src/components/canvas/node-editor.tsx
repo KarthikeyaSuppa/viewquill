@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, Star, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ImagePlus, Loader2, Plus, Sparkles, Star, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,8 +59,12 @@ import {
   useUploadImage,
 } from '@/queries/images'
 import type { BookType } from '@/queries/books'
+import type { ImageRead } from '@/lib/api'
 import type { SceneFlowNode } from '@/components/canvas/nodes'
 import { EnhanceDiff } from '@/components/canvas/enhance-diff'
+import { DescriptionHistoryButton } from '@/components/canvas/description-history'
+import { SceneCharactersSection } from '@/components/canvas/scene-characters'
+import { useSliceDelete } from '@/components/ui/slice-delete'
 import { insertAtCaret, MicButton } from '@/components/voice/mic-button'
 
 const STATUS_OPTIONS = ['draft', 'revised', 'final'] as const
@@ -123,11 +127,15 @@ export function NodeEditor({ bookId, bookType, node, onClose }: NodeEditorProps)
 
   function handleSave() {
     if (!sceneId || titleInvalid) return
+    // `description` is ALWAYS saved now, regardless of book type (docs PHASE13 Workstream
+    // C task C1) — `scenes.description` and `screenplay_elements` deliberately coexist
+    // (elements never modify description), so a script Book saving a description is
+    // additive, never destructive.
     updateScene.mutate({
       id: sceneId,
       title: title.trim(),
       status,
-      ...(script ? {} : { description }),
+      description,
     })
   }
 
@@ -224,8 +232,6 @@ function NodeEditorBody({
   onDeletePermanently,
   deletePending,
 }: NodeEditorBodyProps) {
-  const titleFieldRef = useRef<HTMLInputElement | null>(null)
-
   return (
     <>
       <div className="flex items-center justify-between gap-2 border-b border-border px-5 py-4">
@@ -239,25 +245,14 @@ function NodeEditorBody({
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-5 px-5 py-5">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="node-title">Title</Label>
-              <MicButton
-                fieldRef={titleFieldRef}
-                label="Title"
-                onTranscript={(text) => setTitle(insertAtCaret(titleFieldRef.current, title, text))}
-              />
-            </div>
-            <Input
-              id="node-title"
-              ref={titleFieldRef}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              aria-invalid={titleInvalid}
-              placeholder="Untitled"
-            />
-            {titleInvalid && <p className="text-xs text-destructive">Title can’t be empty.</p>}
-          </div>
+          <TitleField
+            title={title}
+            setTitle={setTitle}
+            titleInvalid={titleInvalid}
+            description={description}
+            sceneId={sceneId}
+            bookId={bookId}
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="node-status">Status</Label>
@@ -275,16 +270,19 @@ function NodeEditorBody({
             </Select>
           </div>
 
-          {script ? (
-            <ElementsEditor sceneId={sceneId} />
-          ) : (
-            <DescriptionField
-              sceneId={sceneId}
-              bookId={bookId}
-              description={description}
-              setDescription={setDescription}
-            />
-          )}
+          {/* Description is ALWAYS rendered now, for every book type (docs PHASE13
+              Workstream C task C1) — `scenes.description` and `screenplay_elements`
+              deliberately coexist, elements never modify description. */}
+          <DescriptionField
+            sceneId={sceneId}
+            bookId={bookId}
+            description={description}
+            setDescription={setDescription}
+          />
+
+          {script && <ElementsEditor sceneId={sceneId} />}
+
+          <SceneCharactersSection sceneId={sceneId} />
 
           <SceneImagesSection sceneId={sceneId} />
 
@@ -348,10 +346,150 @@ function NodeEditorBody({
   )
 }
 
+/** Title field: the existing Mic dictation, plus a Sparkles "suggest a title from the
+ * description" control fixed to the LEFT of the Input (docs PHASE13 Workstream C task
+ * C2). Mirrors `DescriptionField`'s Enhance seam for the streaming/error plumbing, but
+ * Accept here is even MORE conservative — it only ever calls `setTitle` on the local
+ * draft. It never PATCHes the Scene itself, unlike `DescriptionField`'s Accept; the user
+ * still has to review the filled-in title and click the drawer's own "Save changes"
+ * themselves, exactly as if they'd typed it by hand — this is what keeps the
+ * never-silently-overwrite guarantee intact for the Title field too. */
+function TitleField({
+  title,
+  setTitle,
+  titleInvalid,
+  description,
+  sceneId,
+  bookId,
+}: {
+  title: string
+  setTitle: (value: string) => void
+  titleInvalid: boolean
+  description: string
+  sceneId: string
+  bookId: string
+}) {
+  const titleFieldRef = useRef<HTMLInputElement | null>(null)
+  const enhance = useEnhance()
+  const [reviewing, setReviewing] = useState(false)
+
+  const descriptionEmpty = description.trim().length === 0
+
+  function handleSuggestTitle() {
+    setReviewing(true)
+    enhance.start({
+      mode: 'title',
+      text: description,
+      scene_id: sceneId,
+      book_id: bookId,
+      field: 'title',
+      entity_type: 'scene',
+      entity_id: sceneId,
+    })
+  }
+
+  // The ONLY writer here — and even this only fills the LOCAL draft, never a PATCH.
+  function handleAccept() {
+    setTitle(enhance.streamedText)
+    if (enhance.logId) acceptLog(enhance.logId, true)
+    setReviewing(false)
+  }
+
+  // Writes NOTHING — the title draft is untouched.
+  function handleReject() {
+    if (enhance.logId) acceptLog(enhance.logId, false)
+    setReviewing(false)
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="node-title">Title</Label>
+        <MicButton
+          fieldRef={titleFieldRef}
+          label="Title"
+          onTranscript={(text) => setTitle(insertAtCaret(titleFieldRef.current, title, text))}
+        />
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleSuggestTitle}
+                disabled={enhance.isStreaming || descriptionEmpty}
+                aria-label="Suggest a title from the description"
+              >
+                <Sparkles className="size-4" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {descriptionEmpty
+              ? 'Write a description first — there’s nothing to title yet'
+              : 'Suggest a title from the description — you review before it fills the field'}
+          </TooltipContent>
+        </Tooltip>
+        <Input
+          id="node-title"
+          ref={titleFieldRef}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          aria-invalid={titleInvalid}
+          placeholder="Untitled"
+          className="flex-1"
+        />
+      </div>
+      {titleInvalid && <p className="text-xs text-destructive">Title can’t be empty.</p>}
+
+      {reviewing && (
+        <div className="glass glass-edge flex items-center gap-2 rounded-lg p-2">
+          {enhance.isStreaming ? (
+            <span className="flex flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Suggesting…
+            </span>
+          ) : (
+            <span className="manuscript flex-1 truncate text-sm font-medium">
+              {enhance.streamedText || '—'}
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={handleAccept}
+                disabled={enhance.isStreaming || enhance.streamedText.trim().length === 0}
+                aria-label="Accept suggested title"
+              >
+                <Check className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Fills the Title field — you still need to Save</TooltipContent>
+          </Tooltip>
+          <Button size="icon-sm" variant="ghost" onClick={handleReject} aria-label="Reject suggested title">
+            <X className="size-4" />
+          </Button>
+        </div>
+      )}
+      {enhance.error && <p className="text-xs text-destructive">Enhance failed: {enhance.error}</p>}
+    </div>
+  )
+}
+
 /** Prose-book body: the Description Textarea plus a real Enhance ✨ (docs/06 Phase 2 task
  * H2). Enhance only ever streams a *suggestion* into local state — Accept is the sole
  * path that writes it into the canonical Scene (via `useUpdateScene`); Reject (or
- * dismissing the panel) leaves `description` exactly as the user left it. */
+ * dismissing the panel) leaves `description` exactly as the user left it.
+ *
+ * docs PHASE13 Workstream C additions: the Textarea auto-resizes to its content (C1), a
+ * successful Accept now surfaces an Undo/Redo toast via the same `showUndoToast` pattern
+ * the delete flow uses (C3), and a "History" button opens a read-only version-by-version
+ * diff of this field (C4, `description-history.tsx`). */
 function DescriptionField({
   sceneId,
   bookId,
@@ -368,6 +506,16 @@ function DescriptionField({
   const [reviewing, setReviewing] = useState(false)
   const descriptionFieldRef = useRef<HTMLTextAreaElement | null>(null)
 
+  // Auto-resize (C1): grows/shrinks the Textarea to fit its content on mount and on
+  // every value change, instead of a fixed height with an internal scrollbar. `min-h-32`
+  // on the element itself (below) is the floor this can never collapse under.
+  useEffect(() => {
+    const el = descriptionFieldRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [description])
+
   function handleEnhanceClick() {
     setReviewing(true)
     enhance.start({
@@ -382,10 +530,37 @@ function DescriptionField({
   }
 
   // The ONLY writer: takes the (possibly hand-edited) suggestion text and PATCHes the
-  // canonical Scene. Never called from Reject.
+  // canonical Scene. Never called from Reject. The Undo/Redo toast only fires once the
+  // PATCH has actually landed (`onSuccess`), same discipline as `handleDeletePermanently`
+  // in this same file — never toast an undo option for a write that hasn't happened yet.
+  //
+  // Undo/Redo here is SCOPED to this exact description change: Undo re-PATCHes the pre-Accept
+  // text, Redo re-applies the accepted text. It deliberately does NOT use the Book-wide
+  // `undo_log` (`useUndoLastAction`) the delete flow uses — that log has no `update_scene`
+  // action, so routing this through it would either no-op or silently reverse an unrelated
+  // prior canvas action (delete/merge/edge). This local revert keeps the undo honest and
+  // targeted, and `scene_revisions` still records every version for the History view.
   function handleAccept(finalText: string) {
+    const before = description
     setDescription(finalText)
-    updateScene.mutate({ id: sceneId, description: finalText })
+    updateScene.mutate(
+      { id: sceneId, description: finalText },
+      {
+        onSuccess: () => {
+          showUndoToast(
+            'Description updated',
+            () => {
+              setDescription(before)
+              updateScene.mutate({ id: sceneId, description: before })
+            },
+            () => {
+              setDescription(finalText)
+              updateScene.mutate({ id: sceneId, description: finalText })
+            },
+          )
+        },
+      },
+    )
     if (enhance.logId) acceptLog(enhance.logId, true)
     setReviewing(false)
   }
@@ -408,6 +583,7 @@ function DescriptionField({
               setDescription(insertAtCaret(descriptionFieldRef.current, description, text))
             }
           />
+          <DescriptionHistoryButton sceneId={sceneId} description={description} />
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
@@ -430,7 +606,7 @@ function DescriptionField({
       <Textarea
         id="node-description"
         ref={descriptionFieldRef}
-        className="manuscript min-h-32"
+        className="manuscript min-h-32 resize-none overflow-hidden"
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         placeholder="What happens here?"
@@ -486,21 +662,33 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [selectedToAttach, setSelectedToAttach] = useState<Set<string>>(new Set())
   const [isAttaching, setIsAttaching] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null)
 
   const attachedIds = new Set((attached ?? []).map((image) => image.id))
   const pickable = (pool ?? []).filter((image) => !attachedIds.has(image.id))
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+  /** Uploads every selected file in parallel via the existing single-file `useUploadImage`
+   * mutation (mirrors `handleConfirmAttach`'s `Promise.all` pattern just below) — one failed
+   * file's upload or attach must never block or cancel the others; each mutation's own
+   * `onError` already toasts which file failed. */
+  async function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
     event.target.value = ''
-    if (!file) return
-    uploadImage.mutate(
-      { file, bucket: 'finalized_scene' },
-      {
-        onSuccess: (image) =>
-          attachImage.mutate({ imageId: image.id, entity_type: 'scene', entity_id: sceneId, role: 'finalized' }),
-      },
+    if (files.length === 0) return
+    setUploadProgress({ total: files.length, done: 0 })
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const image = await uploadImage.mutateAsync({ file, bucket: 'finalized_scene' })
+          await attachImage.mutateAsync({ imageId: image.id, entity_type: 'scene', entity_id: sceneId, role: 'finalized' })
+        } catch {
+          // Per-file failure already toasted by useUploadImage/useAttachImage's own onError.
+        } finally {
+          setUploadProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev))
+        }
+      }),
     )
+    setUploadProgress(null)
   }
 
   function toggleSelectedToAttach(imageId: string) {
@@ -643,18 +831,23 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
             variant="outline"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploadImage.isPending}
+            disabled={uploadImage.isPending || uploadProgress != null}
             className="gap-1 text-xs"
           >
             <Plus className="size-3.5" />
-            {uploadImage.isPending ? 'Uploading…' : 'Upload'}
+            {uploadProgress != null
+              ? `Uploading ${uploadProgress.done}/${uploadProgress.total}…`
+              : uploadImage.isPending
+                ? 'Uploading…'
+                : 'Upload'}
           </Button>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
             className="hidden"
-            onChange={handleFileChange}
+            onChange={handleFilesChange}
           />
         </div>
       </div>
@@ -669,66 +862,112 @@ function SceneImagesSection({ sceneId }: { sceneId: string }) {
       ) : (
         <div className="flex flex-wrap gap-2">
           {attached!.map((image, index) => (
-            <div key={image.id} className="group flex flex-col items-center gap-1">
-              <div className="relative size-14 overflow-hidden rounded-lg border border-border">
-                <img
-                  src={imageThumbUrl(image.id)}
-                  alt={image.display_name}
-                  className="size-full object-cover"
-                />
-                {index === 0 && (
-                  <span className="absolute top-0.5 left-0.5 rounded bg-background/80 px-1 text-[9px] font-medium leading-4 text-foreground">
-                    Cover
-                  </span>
-                )}
-                <button
-                  type="button"
-                  aria-label={`Detach ${image.display_name}`}
-                  onClick={() => handleDetach(image.id)}
-                  disabled={detachImage.isPending}
-                  className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-              <div className="flex items-center justify-center gap-0.5">
-                <button
-                  type="button"
-                  aria-label={`Move ${image.display_name} earlier`}
-                  onClick={() => handleMove(index, -1)}
-                  disabled={index === 0 || reorderImages.isPending}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ArrowUp className="size-3" />
-                </button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`Make ${image.display_name} the cover image`}
-                      onClick={() => handleMakeCover(image.id)}
-                      disabled={index === 0 || reorderImages.isPending}
-                      className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                    >
-                      <Star className="size-3" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Make cover image</TooltipContent>
-                </Tooltip>
-                <button
-                  type="button"
-                  aria-label={`Move ${image.display_name} later`}
-                  onClick={() => handleMove(index, 1)}
-                  disabled={index === attached!.length - 1 || reorderImages.isPending}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ArrowDown className="size-3" />
-                </button>
-              </div>
-            </div>
+            <AttachedImageThumb
+              key={image.id}
+              image={image}
+              isCover={index === 0}
+              onDetach={() => handleDetach(image.id)}
+              detachPending={detachImage.isPending}
+              onMoveUp={() => handleMove(index, -1)}
+              onMoveDown={() => handleMove(index, 1)}
+              onMakeCover={() => handleMakeCover(image.id)}
+              moveUpDisabled={index === 0 || reorderImages.isPending}
+              moveDownDisabled={index === attached!.length - 1 || reorderImages.isPending}
+            />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** One attached-image thumbnail — image + Cover badge + hover-revealed detach (✕), plus
+ * reorder/make-cover controls beneath. Split out from `SceneImagesSection`'s `.map` (rather
+ * than inline) purely so each thumbnail gets its own `useSliceDelete()` instance — hooks
+ * can't be called conditionally/in a loop, and each thumbnail's slice-to-delete removal is
+ * independent of its siblings'. */
+function AttachedImageThumb({
+  image,
+  isCover,
+  onDetach,
+  detachPending,
+  onMoveUp,
+  onMoveDown,
+  onMakeCover,
+  moveUpDisabled,
+  moveDownDisabled,
+}: {
+  image: ImageRead
+  isCover: boolean
+  onDetach: () => void
+  detachPending: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onMakeCover: () => void
+  moveUpDisabled: boolean
+  moveDownDisabled: boolean
+}) {
+  // Slice-to-delete removal (Playful + motion only, instant everywhere else — see
+  // `components/ui/slice-delete.tsx`). `onDetach` (→ `useDetachImage`) is unchanged and
+  // always fires; this only delays the thumbnail's visual unmount.
+  const sliceDelete = useSliceDelete(onDetach, 'chip')
+
+  return (
+    <div
+      className={cn('group flex flex-col items-center gap-1', sliceDelete.className)}
+      onAnimationEnd={sliceDelete.onAnimationEnd}
+    >
+      <div className="relative size-14 overflow-hidden rounded-lg border border-border">
+        <img src={imageThumbUrl(image.id)} alt={image.display_name} className="size-full object-cover" />
+        {isCover && (
+          <span className="absolute top-0.5 left-0.5 rounded bg-background/80 px-1 text-[9px] font-medium leading-4 text-foreground">
+            Cover
+          </span>
+        )}
+        <button
+          type="button"
+          aria-label={`Detach ${image.display_name}`}
+          onClick={sliceDelete.startRemove}
+          disabled={detachPending}
+          className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <X className="size-3" />
+        </button>
+      </div>
+      <div className="flex items-center justify-center gap-0.5">
+        <button
+          type="button"
+          aria-label={`Move ${image.display_name} earlier`}
+          onClick={onMoveUp}
+          disabled={moveUpDisabled}
+          className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ArrowUp className="size-3" />
+        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Make ${image.display_name} the cover image`}
+              onClick={onMakeCover}
+              disabled={moveUpDisabled}
+              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+            >
+              <Star className="size-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Make cover image</TooltipContent>
+        </Tooltip>
+        <button
+          type="button"
+          aria-label={`Move ${image.display_name} later`}
+          onClick={onMoveDown}
+          disabled={moveDownDisabled}
+          className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ArrowDown className="size-3" />
+        </button>
+      </div>
     </div>
   )
 }
@@ -863,6 +1102,11 @@ function ElementRow({
   const [reviewing, setReviewing] = useState(false)
   const textFieldRef = useRef<HTMLTextAreaElement | null>(null)
 
+  // Slice-to-delete removal (Playful + motion only, instant everywhere else — see
+  // `components/ui/slice-delete.tsx`). `onDelete` (→ `useDeleteElement`) is unchanged and
+  // always fires; this only delays the row's visual unmount.
+  const sliceDelete = useSliceDelete(onDelete, 'row')
+
   function handleEnhanceClick() {
     setReviewing(true)
     enhance.start({
@@ -891,7 +1135,10 @@ function ElementRow({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border p-2.5">
+    <div
+      className={cn('flex flex-col gap-1.5 rounded-lg border border-border p-2.5', sliceDelete.className)}
+      onAnimationEnd={sliceDelete.onAnimationEnd}
+    >
       <div className="flex items-center gap-1.5">
         <Select value={row.element_type} onValueChange={(value) => onTypeChange(value as ScreenplayElementType)}>
           <SelectTrigger size="sm" className="flex-1">
@@ -941,7 +1188,13 @@ function ElementRow({
         >
           <ArrowDown className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={onDelete} disabled={deletePending} aria-label="Delete element">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={sliceDelete.startRemove}
+          disabled={deletePending}
+          aria-label="Delete element"
+        >
           <Trash2 className="size-3.5" />
         </Button>
       </div>

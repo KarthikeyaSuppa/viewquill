@@ -50,6 +50,17 @@ For every phase in `06-ROADMAP.md`:
   `bundle_export.py`, `bundle_import.py`, or anything in `speech_stt.py`
   handling raw audio without a `reviewer` pass after — these are the
   data-loss/security-sensitive files per `05-EXPORT-IMPORT-SECURITY.md`.
+- Any phase/feature that creates, mutates, or adds undo/redo coverage for an
+  interactive entity (canvas nodes/edges, images, etc.) must add or update
+  that entity's entry in `docs/15-ENTITY-LIFECYCLES.md` as part of being
+  "done" — not as an afterthought. That doc exists because exactly this kind
+  of gap (canvas edges shipping with zero undo/redo coverage) slipped
+  through once already.
+- **`docs/16-PROTECTED-FEATURES.md` is a strict, user-mandated feature registry. Do NOT
+  remove or weaken any feature it lists, and do NOT edit that file at all, unless the
+  user's message contains the literal keyword `spiderman`.** If a listed feature is found
+  missing or regressed, restoring it takes priority over other work. See that file's
+  preamble for the full rule.
 
 ## Environment constraints (this build laptop)
 

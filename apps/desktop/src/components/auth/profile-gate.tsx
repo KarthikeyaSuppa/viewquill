@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Firefly } from '@/components/firefly'
+import { LoginBackground } from '@/components/auth/login-background'
 import { AVATAR_OPTIONS, resolveAvatar } from '@/components/auth/avatars'
 import { useCreateProfile, useLogin, useProfiles } from '@/queries/profiles'
 import type { Profile } from '@/lib/api'
@@ -242,6 +243,8 @@ export function ProfileGate() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background">
+      <LoginBackground />
+
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 z-0"

@@ -16,12 +16,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.base import new_uuid
-from app.models.orm import BookSceneLink, Scene, SceneConnection, ScreenplayElement
+from app.db.base import new_uuid, utcnow_iso
+from app.models.orm import BookSceneLink, Scene, SceneConnection, ScreenplayElement, UndoLog
 from app.models.schemas import CanvasEdge, CanvasNode, CanvasResponse
+from app.services import undo_service
+
+
+def _row_to_dict(row: Any) -> dict[str, Any]:
+    """Plain JSON-safe dict of a row's own columns — no relationships, no lazy loads.
+
+    Same pattern as ``scene_service._row_to_dict`` (Phase 11 delete_scene undo precedent) —
+    reimplemented here rather than imported since that's a private helper local to its
+    module.
+    """
+    return {c.name: getattr(row, c.name) for c in row.__table__.columns}
 
 
 def to_canvas_node(link: BookSceneLink, scene: Scene) -> CanvasNode:
@@ -133,6 +144,17 @@ def get_edge(db: Session, edge_id: str) -> SceneConnection | None:
     return db.get(SceneConnection, edge_id)
 
 
+def _next_sequence_weight(db: Session, book_id: str) -> int:
+    """Monotonic-with-gaps counter, scoped per Book. sequence_weight is intentionally
+    independent of BookSceneOrder's chronological ordering (Phase 11 decision) — this
+    is purely a canvas edge-directionality marker. Gap of 10 leaves room to splice a
+    directional edge between two existing ones later without a full renumber."""
+    current_max = db.execute(
+        select(func.max(SceneConnection.sequence_weight)).where(SceneConnection.book_id == book_id)
+    ).scalar()
+    return (current_max or 0) + 10
+
+
 def create_edge(
     db: Session,
     book_id: str,
@@ -143,18 +165,43 @@ def create_edge(
     target_handle: str | None = None,
     connection_type: str | None = None,
     label: str | None = None,
+    sequence_weight: int | None = None,
 ) -> SceneConnection:
-    edge = SceneConnection(
-        id=new_uuid(),
-        book_id=book_id,
-        source_scene_id=source_scene_id,
-        target_scene_id=target_scene_id,
-        source_handle=source_handle,
-        target_handle=target_handle,
-        connection_type=connection_type,
-        label=label,
-    )
+    if connection_type == "sequence":
+        resolved_weight = (
+            sequence_weight if sequence_weight is not None else _next_sequence_weight(db, book_id)
+        )
+    else:
+        resolved_weight = None
+    edge_values = {
+        "id": new_uuid(),
+        "book_id": book_id,
+        "source_scene_id": source_scene_id,
+        "target_scene_id": target_scene_id,
+        "source_handle": source_handle,
+        "target_handle": target_handle,
+        "connection_type": connection_type,
+        "label": label,
+        "sequence_weight": resolved_weight,
+    }
+    edge = SceneConnection(**edge_values)
     db.add(edge)
+    # Workstream B undo (Phase 11 follow-up): every column above is already known in
+    # Python before any commit (no server-generated column requires a round-trip first),
+    # so the UndoLog snapshot is built from `edge_values` directly and both rows commit
+    # together in the single db.commit() below — matching delete_edge's single-commit
+    # shape (a two-commit version left a crash window between the mutation landing and its
+    # undo record landing).
+    db.add(
+        UndoLog(
+            id=new_uuid(),
+            book_id=book_id,
+            action_type="create_edge",
+            payload={"edge": edge_values},
+            created_at=utcnow_iso(),
+            sequence=undo_service.next_sequence(db),
+        )
+    )
     db.commit()
     db.refresh(edge)
     return edge
@@ -165,8 +212,36 @@ def update_edge(db: Session, edge_id: str, values: dict[str, Any]) -> SceneConne
     edge = db.get(SceneConnection, edge_id)
     if edge is None:
         return None
+    if "connection_type" in values:
+        if values["connection_type"] == "sequence":
+            values.setdefault("sequence_weight", _next_sequence_weight(db, edge.book_id))
+        else:
+            values["sequence_weight"] = None
+    # Workstream B undo: capture pre-update values for exactly the keys about to change.
+    # `values` may already contain `sequence_weight` here even if the caller only passed
+    # `connection_type` — it's set/cleared as a side effect just above — so this dict
+    # captures that silent change too, not just the caller's literal keys.
+    before = {key: getattr(edge, key) for key in values}
     for key, value in values.items():
         setattr(edge, key, value)
+    # `after` is exactly what was just applied above — no re-query needed, unlike `before`
+    # which had to be read off the row prior to mutation.
+    after = dict(values)
+    # A no-op update (every changed key round-tripped to its own current value) must not
+    # create undo noise. Both the mutation and its UndoLog row commit together below —
+    # a two-commit version left a crash window between the mutation landing and its undo
+    # record landing (same fix as create_edge above).
+    if before != after:
+        db.add(
+            UndoLog(
+                id=new_uuid(),
+                book_id=edge.book_id,
+                action_type="update_edge",
+                payload={"edge_id": edge.id, "before": before, "after": after},
+                created_at=utcnow_iso(),
+                sequence=undo_service.next_sequence(db),
+            )
+        )
     db.commit()
     db.refresh(edge)
     return edge
@@ -176,6 +251,19 @@ def delete_edge(db: Session, edge_id: str) -> bool:
     edge = db.get(SceneConnection, edge_id)
     if edge is None:
         return False
+    # Workstream B undo: snapshot the full row BEFORE deleting — same technique as
+    # create_edge/scene_service._build_delete_undo_payload — then delete; both writes
+    # commit together in the single db.commit() below, matching delete_scene's precedent.
+    db.add(
+        UndoLog(
+            id=new_uuid(),
+            book_id=edge.book_id,
+            action_type="delete_edge",
+            payload={"edge": _row_to_dict(edge)},
+            created_at=utcnow_iso(),
+            sequence=undo_service.next_sequence(db),
+        )
+    )
     db.delete(edge)
     db.commit()
     return True

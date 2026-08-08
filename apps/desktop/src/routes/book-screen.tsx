@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, RectangleHorizontal, Square, Users } from 'lucide-react'
+import { ArrowLeft, Plus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,8 +11,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import { useBook, type BookType } from '@/queries/books'
 import { CanvasPanel, NODE_MENU } from '@/components/canvas/canvas-panel'
 import { OutlinePanel } from '@/components/outline/outline-panel'
@@ -20,7 +18,6 @@ import { ImagesPanel } from '@/components/images/images-panel'
 import { DraftPanel } from '@/components/draft/draft-panel'
 import { CharactersPanel } from '@/components/codex/characters-panel'
 import { useCanvasActionsStore } from '@/stores/canvas-actions'
-import { useCardStyleStore } from '@/stores/card-style'
 import { playPageTurn, useDelight } from '@/lib/delight'
 import { useIndicatorRefs, WobblyIndicator } from '@/components/wobbly-indicator'
 
@@ -52,8 +49,6 @@ export function BookScreen() {
   const [tab, setTab] = useState<BookTab>('canvas')
   const addNode = useCanvasActionsStore((s) => s.addNode)
   const addNodePending = useCanvasActionsStore((s) => s.addNodePending)
-  const cardStyle = useCardStyleStore((s) => s.cardStyle)
-  const setCardStyle = useCardStyleStore((s) => s.setCardStyle)
 
   // Wobbly underline (PHASE-UI-EFFECTS.md #9) — replaces the default shadcn Tabs pill
   // active-treatment (see `.wobbly-tabs` in index.css) with a single sliding underline, so
@@ -128,68 +123,6 @@ export function BookScreen() {
 
           {tab === 'canvas' && (
             <div className="flex items-center gap-2">
-              <fieldset className="card-style-toggle flex items-center gap-0.5 rounded-md border p-0.5">
-                <legend className="sr-only">Scene shape</legend>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label
-                      data-card-style="rectangle"
-                      className={cn(
-                        'relative z-10 inline-flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
-                        cardStyle === 'rectangle'
-                          ? 'text-secondary-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="card-style"
-                        value="rectangle"
-                        checked={cardStyle === 'rectangle'}
-                        onChange={() => setCardStyle('rectangle')}
-                        className="sr-only"
-                      />
-                      <RectangleHorizontal className="size-3.5" aria-hidden="true" />
-                      <span className="sr-only">Rectangle scene cards</span>
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent>Rectangle scene cards</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label
-                      data-card-style="square"
-                      className={cn(
-                        'relative z-10 inline-flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
-                        cardStyle === 'square'
-                          ? 'text-secondary-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="card-style"
-                        value="square"
-                        checked={cardStyle === 'square'}
-                        onChange={() => setCardStyle('square')}
-                        className="sr-only"
-                      />
-                      <Square className="size-3.5" aria-hidden="true" />
-                      <span className="sr-only">Square scene cards</span>
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent>Square scene cards</TooltipContent>
-                </Tooltip>
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'card-style-pill rounded-md bg-secondary',
-                    cardStyle === 'rectangle' ? 'card-style-pill--rectangle' : 'card-style-pill--square',
-                    !motionOk && 'card-style-pill--instant',
-                  )}
-                />
-              </fieldset>
-
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" disabled={!addNode || addNodePending}>

@@ -135,11 +135,14 @@ class SceneRevisionRead(BaseModel):
 # ── Scoped undo/redo (Workstream B task 7, PHASE11.md) — minimal confirmation shape for
 # POST /books/{book_id}/undo and /redo. ``scene_id`` is populated for ``delete_scene``
 # (the only action_type with a producer today); left ``None`` for any future action_type
-# whose payload doesn't center on a single scene.
+# whose payload doesn't center on a single scene. ``edge_id`` is the equivalent for the
+# edge action types (``create_edge`` / ``delete_edge`` / ``update_edge``); left ``None``
+# for any action_type whose payload doesn't center on a single edge.
 class UndoActionRead(BaseModel):
     id: str
     action_type: str
     scene_id: str | None
+    edge_id: str | None = None
     undone_at: str | None
     created_at: str
 
@@ -227,7 +230,9 @@ class CanvasEdge(BaseModel):
     label: str | None
     # Nullable rendering/sort hint distinguishing "this edge represents lineage/sequence"
     # from an arbitrary free-form connection (default NULL = not part of the lineage view).
-    # No writer populates this yet — it exists for a future feature; the frontend only reads it.
+    # canvas_service auto-assigns a monotonic-with-gaps weight whenever connection_type is
+    # "sequence" (directional) and forces it back to NULL for every other connection_type
+    # (undirected) — see canvas_service._next_sequence_weight / create_edge / update_edge.
     sequence_weight: int | None
 
 
@@ -266,6 +271,7 @@ class EdgeCreate(BaseModel):
     target_handle: str | None = None
     connection_type: ConnectionType | None = None
     label: str | None = None
+    sequence_weight: int | None = None
 
 
 class EdgeUpdate(BaseModel):
@@ -277,6 +283,7 @@ class EdgeUpdate(BaseModel):
     target_handle: str | None = None
     connection_type: ConnectionType | None = None
     label: str | None = None
+    sequence_weight: int | None = None
 
 
 # ── Codex (docs/03-DATA-MODEL.md `codex_entries`; docs/01 Codex; docs/06 Phase 2 tasks B1/B2) ─
@@ -528,7 +535,7 @@ class CodexArcStateRead(BaseModel):
 # The `/llm/enhance` endpoint streams a suggestion; it NEVER writes to `scenes` or
 # `screenplay_elements` itself — Accept is a separate, explicit client-driven PATCH to the
 # entity in question. This schema block only covers the request + the audit-log resource.
-EnhanceMode = Literal["grammar", "prose", "continuity"]
+EnhanceMode = Literal["grammar", "prose", "continuity", "title"]
 
 
 class ContinuityFlagRead(BaseModel):
@@ -801,3 +808,23 @@ class SimilarSceneSuggestion(BaseModel):
 class SceneSuggestionsResponse(BaseModel):
     codex_link_suggestions: list[CodexLinkSuggestion]
     similar_scenes: list[SimilarSceneSuggestion]
+
+
+# ── LAN Notes (app/models/orm.py `Note`; last-write-wins shared scratch-note) ──────────────
+# `updated_at` is caller-supplied epoch milliseconds (the LWW clock), NOT a server-generated
+# timestamp — see app/services/notes_service.py's `apply_note` for the "newer clock wins,
+# otherwise silently keep the current row" rule this schema pair feeds.
+class NoteWrite(BaseModel):
+    content: str
+    updated_at: int
+    updated_by: str
+
+
+class NoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    channel: str
+    content: str
+    updated_at: int
+    updated_by: str
+    rev: int

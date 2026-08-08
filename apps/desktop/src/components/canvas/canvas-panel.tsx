@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import {
   Background,
+  ConnectionMode,
   Controls,
   MiniMap,
   Panel,
@@ -22,6 +31,8 @@ import {
 import '@xyflow/react/dist/style.css'
 import NumberFlow from '@number-flow/react'
 import {
+  ArrowLeftRight,
+  ArrowRightLeft,
   Compass,
   LayoutGrid,
   LayoutTemplate,
@@ -40,13 +51,14 @@ import {
   useCreateEdge,
   useCreateNode,
   useDeleteEdge,
+  useUpdateEdge,
   useUpdateNodePosition,
 } from '@/queries/canvas'
 import { useDeleteScene } from '@/queries/screenplay'
 import { showUndoToast, useRedoLastAction, useUndoLastAction, useUndoStatus } from '@/queries/undo'
 import { useApplyCanvasTemplate, type CanvasTemplateKey } from '@/queries/canvas-templates'
 import { useBook } from '@/queries/books'
-import type { CanvasNode as CanvasNodeDto, NodeType } from '@/lib/api'
+import type { CanvasNode as CanvasNodeDto, ConnectionType, NodeType } from '@/lib/api'
 import { nodeTypes, type CanvasNodeData, type SceneFlowNode } from '@/components/canvas/nodes'
 import { NodeEditor } from '@/components/canvas/node-editor'
 import { MergeDialog, type MergeSourceScene } from '@/components/canvas/merge-dialog'
@@ -54,6 +66,7 @@ import { CodexPanel } from '@/components/canvas/codex-panel'
 import { InkEdge, type InkFlowEdge } from '@/components/canvas/ink-edge'
 import { Firefly } from '@/components/firefly'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useThemeStore } from '@/stores/theme'
 import { useDelight, isFirstNodeMilestone } from '@/lib/delight'
@@ -111,6 +124,13 @@ function toFlowNode(node: CanvasNodeDto, isScriptBook: boolean, bookId: string):
   }
 }
 
+/** Loose `connectionMode` (see the `<ReactFlow>` prop below) is what makes it geometrically
+ * possible to drag from one handle of a node to another handle of that SAME node — rejects
+ * that self-loop so it never reaches `handleConnect`/`createEdge`. */
+function isValidConnection(connection: Connection | InkFlowEdge) {
+  return connection.source !== connection.target
+}
+
 /** A small keyed debounce — coalesces rapid calls for the same key (a dragged node id). */
 function useDebouncedByKey<Args extends unknown[]>(fn: (...args: Args) => void, delayMs: number) {
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -161,13 +181,22 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const { data: undoStatus } = useUndoStatus(bookId)
   const createEdge = useCreateEdge(bookId)
   const deleteEdge = useDeleteEdge(bookId)
+  const updateEdge = useUpdateEdge(bookId)
   const applyTemplate = useApplyCanvasTemplate(bookId)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<SceneFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<InkFlowEdge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { fitView } = useReactFlow()
+  const { fitView, screenToFlowPosition } = useReactFlow()
+
+  // PHASE13 Workstream D: new canvas nodes are created at the user's last left-click
+  // (pane-click) position rather than the old fixed stagger. `handlePaneClick` below
+  // records that position in flow coordinates on every empty-canvas click;
+  // `handleAddNode`/`handleAddNodeWithFocus` read it when creating a node, falling back
+  // to the pre-existing staggered offset if the user hasn't clicked the canvas yet this
+  // session (e.g. first node created straight from the toolbar).
+  const lastClickPosRef = useRef<{ x: number; y: number } | null>(null)
 
   // Multi-select for the AI-assisted merge feature (PHASE11.md Workstream B, "AI-assisted
   // multi-node merge"), deliberately separate from `selectedNodeId` above (which drives the
@@ -180,13 +209,88 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([])
   const [mergeCandidateIds, setMergeCandidateIds] = useState<string[] | null>(null)
 
-  const handleSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: selected }) => {
+  // Selected-edge toolbar (mirrors `mergeSelectedIds` above, same native xyflow selection
+  // mechanism, just the `edges` half of `OnSelectionChangeFunc` instead of `nodes`). Drives
+  // the "Make directional"/"Make undirected" toolbar and the `Shift+D` keyboard toggle below.
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
+
+  const handleSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: selected, edges: selectedEdges }) => {
     setMergeSelectedIds(selected.map((node) => node.id))
+    setSelectedEdgeIds(selectedEdges.map((edge) => edge.id))
   }, [])
 
   const handleMergeSelected = useCallback(() => {
     setMergeCandidateIds(mergeSelectedIds)
   }, [mergeSelectedIds])
+
+  // Toggles an edge between undirected ('reference', no `sequence_weight`) and directional
+  // ('sequence', server auto-assigns `sequence_weight` — see PATCH /edges/{id}). Reused by
+  // both the selected-edge toolbar button and the `Shift+D` keyboard shortcut below.
+  const toggleEdgeDirectionality = useCallback(
+    (edge: InkFlowEdge) => {
+      const nextType: ConnectionType = edge.data?.sequenceWeight != null ? 'reference' : 'sequence'
+      // Message matches the `Shift+D` aria-live announcement wording below exactly (see
+      // `handleCanvasKeyDown`'s "Connection is now undirected."/"...directional." strings).
+      const message = nextType === 'sequence' ? 'Connection is now directional' : 'Connection is now undirected'
+      updateEdge.mutate(
+        { edgeId: edge.id, connection_type: nextType },
+        {
+          onSuccess: () => showUndoToast(message, () => undoLastAction.mutate(), () => redoLastAction.mutate()),
+        },
+      )
+    },
+    [updateEdge, undoLastAction, redoLastAction],
+  )
+
+  // Reverses an edge's direction (docs/06 Phase 13 follow-up) — swaps both scene ids AND
+  // both handle ids in the one PATCH, so the arrow flips ends without also flipping which
+  // side of each node it's anchored to. `update_edge` on the backend is a plain `setattr`
+  // loop, so one mutation covers all four fields.
+  const handleReverseEdge = useCallback(
+    (edge: InkFlowEdge) => {
+      updateEdge.mutate(
+        {
+          edgeId: edge.id,
+          source_scene_id: edge.target,
+          target_scene_id: edge.source,
+          source_handle: edge.targetHandle ?? null,
+          target_handle: edge.sourceHandle ?? null,
+        },
+        {
+          onSuccess: () =>
+            showUndoToast('Connection reversed', () => undoLastAction.mutate(), () => redoLastAction.mutate()),
+        },
+      )
+    },
+    [updateEdge, undoLastAction, redoLastAction],
+  )
+
+  // Selected-edge label/comment draft (docs/06 Phase 13 follow-up) — a local echo of the
+  // selected edge's `label`, only PATCHed on blur/Enter (`handleSaveEdgeLabel` below), never
+  // on every keystroke. `edgesRef` lets the seeding effect read the current edge without
+  // depending on `edges` itself, so an unrelated canvas refetch (e.g. a node drag elsewhere)
+  // can't clobber an in-progress edit — the draft only re-seeds when the selection changes.
+  const [edgeLabelDraft, setEdgeLabelDraft] = useState('')
+  const selectedEdgeId = selectedEdgeIds.length === 1 ? selectedEdgeIds[0] : null
+  const edgesRef = useRef(edges)
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
+  useEffect(() => {
+    if (!selectedEdgeId) return
+    const edge = edgesRef.current.find((e) => e.id === selectedEdgeId)
+    setEdgeLabelDraft(edge?.label ? String(edge.label) : '')
+  }, [selectedEdgeId])
+
+  const handleSaveEdgeLabel = useCallback(
+    (edge: InkFlowEdge) => {
+      const trimmed = edgeLabelDraft.trim()
+      const current = edge.label ? String(edge.label) : ''
+      if (trimmed === current) return
+      updateEdge.mutate({ edgeId: edge.id, label: trimmed || null })
+    },
+    [edgeLabelDraft, updateEdge],
+  )
 
   // The source scenes' current title/description for `MergeDialog`'s "original" diff side —
   // built straight from `nodes` (already loaded for the canvas render) rather than a fresh
@@ -261,16 +365,28 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         target_scene_id: connection.target,
         source_handle: connection.sourceHandle,
         target_handle: connection.targetHandle,
+        // Undirected by default (docs/06 Phase 11 follow-up) — a plain drag-to-connect no
+        // longer implies lineage/sequence order. Directionality is now an explicit opt-in via
+        // the selected-edge toolbar / `Shift+D` (`toggleEdgeDirectionality` below).
+        connection_type: 'reference',
       })
     },
     [createEdge],
   )
 
+  // Mirrors `handleNodesDelete` below (same `showUndoToast` per-item pattern, one toast per
+  // deleted edge rather than a combined multi-edge toast) — connections don't have a title, so
+  // the toast message stays generic rather than trying to name one.
   const handleEdgesDelete: OnEdgesDelete = useCallback(
     (removed) => {
-      removed.forEach((edge) => deleteEdge.mutate(edge.id))
+      removed.forEach((edge) =>
+        deleteEdge.mutate(edge.id, {
+          onSuccess: () =>
+            showUndoToast('Connection deleted', () => undoLastAction.mutate(), () => redoLastAction.mutate()),
+        }),
+      )
     },
-    [deleteEdge],
+    [deleteEdge, undoLastAction, redoLastAction],
   )
 
   // Keyboard-triggered delete (xyflow's native Backspace/Delete on selected node(s),
@@ -324,7 +440,12 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const confirmConnection = useCallback(
     (targetNodeId: string | null) => {
       if (!connectSourceId || !targetNodeId || targetNodeId === connectSourceId) return
-      createEdge.mutate({ source_scene_id: connectSourceId, target_scene_id: targetNodeId })
+      // Undirected by default — see the matching comment on `handleConnect` above.
+      createEdge.mutate({
+        source_scene_id: connectSourceId,
+        target_scene_id: targetNodeId,
+        connection_type: 'reference',
+      })
       setConnectAnnouncement(
         `Connected ${nodeTitleById(connectSourceId)} to ${nodeTitleById(targetNodeId)}.`,
       )
@@ -344,12 +465,17 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   const nodeCount = nodes.length
   const handleAddNode = useCallback(
     (nodeType: NodeType) => {
-      const stagger = nodeCount * 32
+      const pos = lastClickPosRef.current ?? { x: 80 + nodeCount * 32, y: 80 + nodeCount * 32 }
+      // Cascade repeated adds from the same click point so they don't stack perfectly on
+      // top of each other; a fresh pane click resets the anchor (see `handlePaneClick`).
+      if (lastClickPosRef.current) {
+        lastClickPosRef.current = { x: lastClickPosRef.current.x + 28, y: lastClickPosRef.current.y + 28 }
+      }
       createNode.mutate({
         node_type: nodeType,
         title: DEFAULT_TITLES[nodeType],
-        canvas_x: 80 + stagger,
-        canvas_y: 80 + stagger,
+        canvas_x: pos.x,
+        canvas_y: pos.y,
       })
       // The very first node created anywhere in the app, ever — a one-time milestone
       // (docs/10 §5). `isFirstNodeMilestone()` flips the localStorage flag and returns
@@ -371,13 +497,17 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   // focus to it once it's actually rendered.
   const handleAddNodeWithFocus = useCallback(() => {
     const nodeType: NodeType = 'scene'
-    const stagger = nodeCount * 32
+    const pos = lastClickPosRef.current ?? { x: 80 + nodeCount * 32, y: 80 + nodeCount * 32 }
+    // Cascade repeated adds from the same click point (see `handleAddNode`).
+    if (lastClickPosRef.current) {
+      lastClickPosRef.current = { x: lastClickPosRef.current.x + 28, y: lastClickPosRef.current.y + 28 }
+    }
     createNode.mutate(
       {
         node_type: nodeType,
         title: DEFAULT_TITLES[nodeType],
-        canvas_x: 80 + stagger,
-        canvas_y: 80 + stagger,
+        canvas_x: pos.x,
+        canvas_y: pos.y,
       },
       { onSuccess: (canvasNode) => setPendingFocusNodeId(canvasNode.scene_id) },
     )
@@ -386,6 +516,17 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
       fireDelightAccent()
     }
   }, [createNode, nodeCount, fireConfetti, fireDelightAccent])
+
+  // Records the flow-space coordinates of the last click on empty canvas (a React Flow
+  // "pane click" — clicking a node itself doesn't fire this). `handleAddNode`/
+  // `handleAddNodeWithFocus` above read `lastClickPosRef` to place the next created node
+  // there instead of the old fixed stagger.
+  const handlePaneClick = useCallback(
+    (event: ReactMouseEvent) => {
+      lastClickPosRef.current = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    },
+    [screenToFlowPosition],
+  )
 
   // Once the newly-created node id shows up in `nodes` (the canvas query has refetched and
   // xyflow has rendered its wrapper), move DOM focus onto it. `requestAnimationFrame` gives the
@@ -423,6 +564,11 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
   //   - `Shift+N` — task 6: add a node and move focus straight to it.
   //   - `Shift+C` — task 7: start connect-mode from the focused node; pressed again (or Enter)
   //     confirms a connection to whichever node is now focused. `Escape` cancels.
+  //   - `Shift+D` — toggles the single selected connection between undirected/directional
+  //     (same mutation the selected-edge toolbar button uses). Requires exactly one edge
+  //     selected via xyflow's native selection (`selectedEdgeIds` above) — there's no
+  //     equivalent "focused edge" concept to fall back on the way node bindings fall back to
+  //     the keyboard-focused node.
   const handleCanvasKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement
@@ -450,6 +596,21 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         return
       }
 
+      if (!hasModifier && event.shiftKey && event.key.toLowerCase() === 'd') {
+        event.preventDefault()
+        if (selectedEdgeIds.length !== 1) {
+          setConnectAnnouncement('Select a single connection first, then press Shift+D to toggle it.')
+          return
+        }
+        const edge = edges.find((e) => e.id === selectedEdgeIds[0])
+        if (!edge) return
+        toggleEdgeDirectionality(edge)
+        setConnectAnnouncement(
+          edge.data?.sequenceWeight != null ? 'Connection is now undirected.' : 'Connection is now directional.',
+        )
+        return
+      }
+
       if (connectSourceId && event.key === 'Escape') {
         event.preventDefault()
         setConnectSourceId(null)
@@ -468,7 +629,15 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         setSelectedNodeId(targetNodeId)
       }
     },
-    [connectSourceId, confirmConnection, nodeTitleById, handleAddNodeWithFocus],
+    [
+      connectSourceId,
+      confirmConnection,
+      nodeTitleById,
+      handleAddNodeWithFocus,
+      selectedEdgeIds,
+      edges,
+      toggleEdgeDirectionality,
+    ],
   )
 
   // Bridges `handleAddNode` out to the book-screen tab row, which renders the "Add node"
@@ -608,11 +777,18 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         onEdgesChange={onEdgesChange}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
+        isValidConnection={isValidConnection}
         onEdgesDelete={handleEdgesDelete}
         onNodesDelete={handleNodesDelete}
         onNodeClick={handleNodeClick}
+        onPaneClick={handlePaneClick}
         onSelectionChange={handleSelectionChange}
         multiSelectionKeyCode="Shift"
+        // Loose mode: every handle above is `type="source"`, so a drag can start or end on
+        // any of the four dots — the gesture direction always decides `connection.source`/
+        // `.target` instead of xyflow silently reversing it based on which handle happened
+        // to be the `target`-typed one (the reported bug).
+        connectionMode={ConnectionMode.Loose}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'ink' }}
@@ -626,6 +802,10 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
         // comfortably clickable at both extremes.
         minZoom={0.4}
         maxZoom={1.5}
+        // Default is 20px — doubled here; low connect-success-rate is a drop-tolerance
+        // problem (xyflow matches on proximity to a handle's center point, not a DOM
+        // hit-test), not a visual-size problem.
+        connectionRadius={40}
       >
         <Background className="!bg-background" gap={24} size={1} />
         <Controls
@@ -659,6 +839,62 @@ function CanvasPanelInner({ bookId }: { bookId: string }) {
             </Button>
           </Panel>
         )}
+        {/* Selected-edge toolbar — mutually exclusive with the merge toolbar above (a
+            multi-node selection never coincides with rendering this one, and vice versa,
+            since xyflow reports node/edge selection independently but this only renders
+            when the merge toolbar's condition is false). A comment/label field, a Reverse
+            action, and the undirected/directional toggle — same mutations the `Shift+D`
+            keyboard binding and (for reversal) nothing else in the app use. */}
+        {mergeSelectedIds.length < 2 &&
+          selectedEdgeIds.length === 1 &&
+          (() => {
+            const edge = edges.find((e) => e.id === selectedEdgeIds[0])
+            if (!edge) return null
+            const isDirectional = edge.data?.sequenceWeight != null
+            return (
+              <Panel position="bottom-center" className="!mb-4">
+                <div className="glass glass-edge flex items-center gap-1.5 rounded-xl p-1.5 shadow-lg">
+                  <Input
+                    value={edgeLabelDraft}
+                    onChange={(event) => setEdgeLabelDraft(event.target.value)}
+                    onBlur={() => handleSaveEdgeLabel(edge)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      handleSaveEdgeLabel(edge)
+                      event.currentTarget.blur()
+                    }}
+                    placeholder="Add a comment…"
+                    aria-label="Connection comment"
+                    className="h-8 w-44 bg-background/70"
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon-sm"
+                        aria-label="Reverse connection direction"
+                        onClick={() => handleReverseEdge(edge)}
+                      >
+                        <ArrowLeftRight className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Reverse direction</TooltipContent>
+                  </Tooltip>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={() => toggleEdgeDirectionality(edge)}
+                  >
+                    <ArrowRightLeft className="size-4" />
+                    {isDirectional ? 'Make undirected' : 'Make directional'}
+                  </Button>
+                </div>
+              </Panel>
+            )
+          })()}
       </ReactFlow>
 
       {/* Ambient firefly (docs/10 §6, §5) — Night canvas only, and only at delight_level

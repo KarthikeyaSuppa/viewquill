@@ -101,6 +101,7 @@ export interface CreateEdgeInput {
   target_handle?: string | null
   connection_type?: ConnectionType | null
   label?: string | null
+  sequence_weight?: number | null
 }
 
 export function useCreateEdge(bookId: string | undefined) {
@@ -111,6 +112,27 @@ export function useCreateEdge(bookId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['canvas', bookId] })
     },
     onError: () => toast.error('Could not connect the nodes'),
+  })
+}
+
+export interface UpdateEdgeInput {
+  connection_type?: ConnectionType | null
+  source_scene_id?: string
+  target_scene_id?: string
+  source_handle?: string | null
+  target_handle?: string | null
+  label?: string | null
+}
+
+export function useUpdateEdge(bookId: string | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ edgeId, ...body }: { edgeId: string } & UpdateEdgeInput) =>
+      api.patch<CanvasEdge>(`/edges/${edgeId}`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['canvas', bookId] })
+    },
+    onError: () => toast.error('Could not update the connection'),
   })
 }
 

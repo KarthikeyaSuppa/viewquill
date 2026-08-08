@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarClock, List, Loader2, Network, Plus, Search, UserPlus, Users } from 'lucide-react'
+import { List, Loader2, Network, Plus, Search, UserPlus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,24 +15,18 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useBookCharacters, useCodexEntries, useCreateCodex, useLinkCodexToBook } from '@/queries/codex'
 import { useBooks } from '@/queries/books'
-import { useCanvas } from '@/queries/canvas'
-import { useTimeline } from '@/queries/outline'
 import { CodexEntryDialog } from '@/components/codex/codex-entry-dialog'
 import { CharacterRelationshipGraph } from '@/components/codex/character-relationship-graph'
-import { CharacterSceneTimeline } from '@/components/codex/character-scene-timeline'
-import { buildRows } from '@/components/outline/timeline-view'
-import type { OutlineScene } from '@/components/outline/beat-board'
 import type { CodexEntry } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useDelight } from '@/lib/delight'
 
 /** View-mode seam for the relationship-graph "map" view (PHASE-UI-EFFECTS.md §3 task 4,
- * React Flow over `codex_relationships`) and the Gantt-style "timeline" view
- * (PHASE-UI-EFFECTS-2.md §3/§5 task 8): `'list'` is the searchable card grid, `'map'` renders
- * `CharacterRelationshipGraph`, `'timeline'` renders `CharacterSceneTimeline`. All three
- * branches share the same `filtered` entries and the same `editingEntry`/`CodexEntryDialog`
- * state. */
-type CharactersViewMode = 'list' | 'map' | 'timeline'
+ * React Flow over `codex_relationships`): `'list'` is the searchable card grid, `'map'`
+ * renders `CharacterRelationshipGraph`. Both branches share the same `filtered` entries and
+ * the same `editingEntry`/`CodexEntryDialog` state. (The Gantt-style "timeline" view from
+ * PHASE-UI-EFFECTS-2.md §3/§5 task 8 was removed in PHASE13 Workstream A.) */
+type CharactersViewMode = 'list' | 'map'
 
 /** Case-insensitive substring match against name or summary — the whole small per-Book
  * character set is already in memory, so this runs on every keystroke with no debounce
@@ -56,8 +50,8 @@ function letterBucket(name: string): string {
  * name with the `'#'` bucket pinned last regardless of locale. The A-Z index rail (§2 task 9,
  * PHASE-UI-EFFECTS-2.md §2 item 1) only makes sense against an alphabetized list — "jump to
  * the first name starting with C" and "highlight the letter currently in view" both assume
- * same-letter entries are contiguous — so List view sorts here; Map/Timeline keep the
- * original (unsorted) `filtered` order since neither has a comparable per-letter concept. */
+ * same-letter entries are contiguous — so List view sorts here; Map keeps the original
+ * (unsorted) `filtered` order since it has no comparable per-letter concept. */
 function groupByLetter(entries: CodexEntry[]): [string, CodexEntry[]][] {
   const sorted = [...entries].sort((a, b) => {
     const bucketA = letterBucket(a.name)
@@ -187,16 +181,8 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
   // rather than adding a new hook, same data `codex-panel.tsx` already fetches.
   const { data: allCharacters, isLoading: allCharactersLoading } = useCodexEntries('character')
 
-  // Same ordered-scenes source the Outline tab's Timeline view uses (`useCanvas` for
-  // scene id/title, `useTimeline` for `timeline_order_index`/`in_story_time_*` — see
-  // `outline-panel.tsx`/`timeline-view.tsx`), reused via `buildRows` rather than re-derived,
-  // per PHASE-UI-EFFECTS-2.md §3's explicit instruction not to hand-roll new ordering logic.
-  const { data: canvas } = useCanvas(bookId)
-  const { data: timelineRows } = useTimeline(bookId)
-
   const entries = useMemo(() => data?.entries ?? [], [data])
   const relationships = useMemo(() => data?.relationships ?? [], [data])
-  const sceneLinks = useMemo(() => data?.scene_links ?? {}, [data])
   const filtered = useMemo(() => entries.filter((entry) => matchesQuery(entry, query)), [entries, query])
 
   // List-view-only alphabetized grouping (see class doc above) — built off `filtered`, so the
@@ -257,15 +243,6 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
     for (const el of sectionRefs.current.values()) observer.observe(el)
     return () => observer.disconnect()
   }, [listGroups, viewMode])
-
-  const orderedScenes = useMemo(() => {
-    const scenes: OutlineScene[] = (canvas?.nodes ?? []).map((node) => ({
-      id: node.scene_id,
-      title: node.title,
-      nodeType: node.node_type,
-    }))
-    return buildRows(scenes, timelineRows ?? [])
-  }, [canvas, timelineRows])
 
   // Already linked to this Book — excluded from the "Attach existing" picker so it only ever
   // offers characters not yet on this Book's list.
@@ -333,14 +310,13 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           </div>
         </div>
 
-        {/* List/Map/Timeline view toggle (PHASE-UI-EFFECTS.md §3 task 4, PHASE-UI-EFFECTS-2.md
-            §5 task 8) — native `<button>`s in a `role="tablist"`, same pattern as
-            `outline-panel.tsx`'s Outline/Timeline toggle, so it's keyboard-operable
-            (Tab + Enter/Space) with no extra wiring. */}
+        {/* List/Map view toggle (PHASE-UI-EFFECTS.md §3 task 4) — native `<button>`s in a
+            `role="tablist"`, same pattern as `outline-panel.tsx`'s Outline/Timeline toggle,
+            so it's keyboard-operable (Tab + Enter/Space) with no extra wiring. */}
         <div
           className="glass glass-edge flex items-center gap-1 rounded-full p-1"
           role="tablist"
-          aria-label="List, Map, or Timeline view"
+          aria-label="List or Map view"
         >
           <Button
             type="button"
@@ -365,18 +341,6 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
           >
             <Network className="size-4" />
             Map
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
-            className="rounded-full"
-            role="tab"
-            aria-selected={viewMode === 'timeline'}
-            onClick={() => setViewMode('timeline')}
-          >
-            <CalendarClock className="size-4" />
-            Timeline
           </Button>
         </div>
 
@@ -489,14 +453,12 @@ export function CharactersPanel({ bookId }: { bookId: string }) {
             onJump={jumpToLetter}
           />
         </div>
-      ) : viewMode === 'map' ? (
+      ) : (
         <CharacterRelationshipGraph
           entries={filtered}
           relationships={relationships}
           onSelectEntry={setEditingEntry}
         />
-      ) : (
-        <CharacterSceneTimeline entries={filtered} sceneLinks={sceneLinks} scenes={orderedScenes} />
       )}
 
       {editingEntry && (

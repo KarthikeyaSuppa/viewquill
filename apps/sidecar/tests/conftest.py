@@ -32,6 +32,22 @@ already uses.
 
 from __future__ import annotations
 
+import os
+
+# Disable the Phase 14 sample-library seeder for the entire test session.
+#
+# `app/main.py`'s lifespan calls `seed_sample_library`, whose guard is "no marker AND no
+# Books" — i.e. exactly the state the shared test database is in. Without this, the first
+# test module to enter `TestClient(app)` seeds 4 demo Books + 27 Scenes + 14 Images into
+# the one database every other module shares, breaking anything that asserts on an empty
+# or precisely-known library (`test_bundle_import_inspect.py::test_inspect_empty_db_
+# everything_created` and the three migration round-trip tests all failed this way).
+#
+# Set here rather than in each test module because conftest.py is imported before any
+# `test_*.py`, and the seeder reads this at call time — so tests/test_sample_library.py can
+# still exercise the real seeder by clearing it around the specific calls under test.
+os.environ.setdefault("QUILLNIGHT_SKIP_SAMPLE_SEED", "1")
+
 
 def reset_users_table() -> None:
     """Deletes every row from ``users`` on the shared test database.

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./.venv/Scripts/python.exe -c \"import app.models.schemas as s; print\\(getattr\\(s,'EnhanceMode',None\\)\\)\")",
+      "Bash(QUILLNIGHT_LLM_STUB=1 QUILLNIGHT_STT_STUB=1 .venv/Scripts/python.exe -m pytest -q tests/test_images.py)",
+      "Bash(.venv/Scripts/python.exe -)",
+      "Bash(QUILLNIGHT_LLM_STUB=1 QUILLNIGHT_STT_STUB=1 ./.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8756 --log-level warning)",
+      "Bash(npx eslint *)",
+      "Bash(.venv/Scripts/python.exe -m ruff check app/services/images_service.py tests/test_images.py)",
+      "Bash(curl -s -X POST http://127.0.0.1:8756/books -H \"Content-Type: application/json\" -d '{\"title\":\"Book A\",\"book_type\":\"story\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(git add *)",
+      "Bash(git commit -m '@ *)",
+      "Bash(git commit *)",
+      "Bash(.venv/Scripts/python.exe -m pip install python-docx)",
+      "Bash(.venv/Scripts/python.exe -m pip install screenplay-tools)",
+      "Bash(.venv/Scripts/python.exe -m pip install weasyprint)",
+      "Bash(.venv/Scripts/python.exe -c \"import weasyprint; print\\(weasyprint.__version__\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pip uninstall -y weasyprint)",
+      "Bash(.venv/Scripts/python.exe -m pip install reportlab)",
+      "Bash(.venv/Scripts/python.exe -c \"import reportlab; print\\(reportlab.Version\\)\")",
+      "Bash(.venv/Scripts/python.exe -m pip show python-docx screenplay-tools reportlab Jinja2)",
+      "Bash(./.venv/Scripts/python.exe -c \"import ast; ast.parse\\(open\\('scripts/reset_library.py'\\).read\\(\\)\\); print\\('AST OK'\\)\")",
+      "Bash(./.venv/Scripts/python.exe -m py_compile scripts/reset_library.py)",
+      "Bash(./.venv/Scripts/python.exe -c \"from app.services.sample_library import content as c; print\\(len\\(c.SCENES\\),len\\(c.BOOKS\\),len\\(c.CODEX_ENTRIES\\),len\\(c.IMAGES\\),len\\(c.SCREENPLAY_ELEMENTS\\),len\\(c.CONTINUITY_FLAGS\\),len\\(c.REVISIONS\\)\\); print\\(sorted\\({e.connection_type for b in c.BOOKS for e in b.edges}, key=str\\)\\); print\\(sorted\\({e.element_type for e in c.SCREENPLAY_ELEMENTS}\\)\\); print\\(sorted\\({s.node_type for s in c.SCENES}\\)\\); print\\(sorted\\({r.change_source for r in c.REVISIONS}\\)\\)\")",
+      "Bash(./.venv/Scripts/python.exe -c ' *)"
+    ]
+  }
+}

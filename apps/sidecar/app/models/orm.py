@@ -404,14 +404,16 @@ class UndoLog(Base):
     """Last reversible destructive/AI action per Book — Workstream B scoped undo.
 
     Stores just enough reconstruction data in ``payload`` (JSON) to reverse one
-    ``action_type`` of action (``delete_scene`` / ``merge_scenes``); ``undone_at`` is
-    set once the action has been reversed so the same entry isn't replayed twice.
+    ``action_type`` of action (``delete_scene`` / ``merge_scenes`` / ``create_edge`` /
+    ``delete_edge`` / ``update_edge``); ``undone_at`` is set once the action has been
+    reversed so the same entry isn't replayed twice.
     """
 
     __tablename__ = "undo_log"
     __table_args__ = (
         CheckConstraint(
-            "action_type IN ('delete_scene','merge_scenes')",
+            "action_type IN ('delete_scene','merge_scenes','create_edge',"
+            "'delete_edge','update_edge')",
             name="action_type",
         ),
     )
@@ -544,3 +546,24 @@ class PersonalDictionary(Base):
     word: Mapped[str] = mapped_column(String, primary_key=True)
     added_at: Mapped[str] = mapped_column(String, nullable=False, default=utcnow_iso)
     source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+# ── LAN Notes (last-write-wins singleton row per channel) ─────────────────────
+class Note(Base):
+    """One singleton row per ``channel`` (e.g. ``'lan'``) — a shared scratch-note the
+    desktop app and a later LAN server both read/write. Conflict resolution is
+    last-write-wins keyed on ``updated_at`` (client-supplied epoch milliseconds, NOT a
+    DB-generated timestamp — see ``app/services/notes_service.py``'s ``apply_note``),
+    so this deliberately does NOT use the rest of this file's ``new_uuid``/``utcnow_iso``
+    conventions: ``channel`` is a small fixed vocabulary (not a UUID identity, since there's
+    exactly one row per channel to merge-by-ID), and the clock must be caller-supplied so a
+    write made on another device stays comparable to one made here.
+    """
+
+    __tablename__ = "notes"
+
+    channel: Mapped[str] = mapped_column(String, primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String, nullable=False)
+    rev: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

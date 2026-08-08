@@ -58,6 +58,39 @@ background asyncio timer adds test surface for marginal value. docs/05 §"Additi
 net" implies a periodic cadence — this closes that gap. **Where it slots:** Phase 9 (hardening),
 alongside idle RAM/`keep_alive` perf tuning. Decision recorded 2026-07-28.
 
+## D. Continuity "detective dashboard" (relationship view)
+
+**What:** a separate view (not the main node canvas) that surfaces how scenes and
+characters interact across a whole Book — a relationship graph/matrix, not a ranked
+list — so a writer working with scattered, non-linearly-written scenes can spot
+continuity flaws at a glance. **Why deferred:** raised 2026-08-02 while scoping a canvas
+node-linking upgrade (directional/undirected edges, handle hit-area, multi-image upload —
+see PHASE-adjacent working notes); it's a genuinely separate, larger initiative, not a
+task that fits inside that upgrade. It would consume `continuity_service.py`'s existing
+flag detection (Phase 4) and Phase 10's embeddings/FTS5/RRF hybrid search + auto
+codex-link/similar-scene suggestions as its data sources — the canvas node/scene data is
+effectively the RAG corpus this dashboard would visualize relationships over, with an eye
+toward eventually helping merge scattered scenes into one coherent story (Phase 11's
+AI-assisted multi-node merge already exists as the merge mechanism; this dashboard would
+be the discovery layer surfacing *which* scenes are candidates). **Where it slots:** its
+own future phase, planned fresh with `architect` once picked up — don't retrofit it into
+an unrelated task. Note: a D3.js "bump/rank chart" (categories ranked across fixed year
+snapshots) was floated as visual inspiration during scoping but explicitly doesn't fit —
+this dashboard is about relationships, not rankings — don't resurrect that chart shape
+for it.
+
+## D2. Hugging Face model-fetch tooling (for Phase 10's real-embedding half)
+
+**What:** write (but don't run) the actual model-download code for Phase 10's still-stub
+`embedding_service._embed_real` — e.g. via `huggingface_hub` — so it's ready-to-run
+rather than needing to be written from scratch once real embeddings are tackled.
+**Why deferred:** this build machine's hard constraint (CLAUDE.md: "no LLM model
+downloads... ever") means writing it now would mean writing untested code with no way to
+verify it works here; it's cheaper to write it together with the rest of Phase 10's
+real-embedding work, on whichever machine actually runs it. **Where it slots:** Phase 10's
+deferred real-embedding half (see `HANDOFF-ASUS-TUF.md` §4c) — pick up there, don't start
+early.
+
 ## C. Recently shipped (moved off this list)
 
 - Toolbar tidy: **Add node** relocated to the Canvas/Outline/Draft tab row; **zoom controls** moved

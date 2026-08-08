@@ -9,7 +9,6 @@ import {
   ImageOff,
   Lightbulb,
   MapPinned,
-  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -39,7 +38,6 @@ import { useDeleteScene, useSceneRevisions, type SceneRevision } from '@/queries
 import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
 import { imageThumbUrl, useEntityImages } from '@/queries/images'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useCardStyleStore } from '@/stores/card-style'
 import type { NodeType } from '@/lib/api'
 
 /** Badge label for `SceneRevision.change_source` — falls back to the raw value verbatim for
@@ -154,8 +152,13 @@ function accentColorFromClass(accentClass: string): string {
  * not gated behind `useDelight().motionOk`. */
 function NodeHandles({ accentClass }: { accentClass: string }) {
   const style = { '--handle-accent': accentColorFromClass(accentClass) } as CSSProperties
+  // `!border-muted-foreground` gives the at-rest dot an explicit, theme-aware ring color:
+  // without it the border fell back to React Flow's default white, which vanished against the
+  // light theme's near-white node card / `bg-background` (only visible in dark mode) — the bug
+  // this fixes. `muted-foreground` contrasts against both the Day and Night backgrounds. Hover
+  // still swaps the fill to the node's accent color (`.node-handle-accent:hover` in index.css).
   const className =
-    'node-handle-accent !size-3.5 !border-2 !bg-background !opacity-70 transition-all hover:!size-5 hover:!opacity-100 focus-visible:!size-5 focus-visible:!opacity-100'
+    'node-handle-accent !size-3.5 !border-2 !border-muted-foreground !bg-background !opacity-70 transition-all hover:!size-5 hover:!opacity-100 focus-visible:!size-5 focus-visible:!opacity-100'
 
   // One-time onboarding hint (see `lib/delight.ts`'s `isFirstConnectHint`, mirrors
   // `isFirstNodeMilestone`'s check-then-set-in-one-call localStorage pattern): only the
@@ -167,8 +170,8 @@ function NodeHandles({ accentClass }: { accentClass: string }) {
 
   return (
     <>
-      <Handle id="top" type="target" position={Position.Top} className={className} style={style} />
-      <Handle id="left" type="target" position={Position.Left} className={className} style={style} />
+      <Handle id="top" type="source" position={Position.Top} className={className} style={style} />
+      <Handle id="left" type="source" position={Position.Left} className={className} style={style} />
       {showConnectHint ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -193,12 +196,8 @@ function NodeHandles({ accentClass }: { accentClass: string }) {
   )
 }
 
-/** Where a node type's image-area aspect ratio comes from:
- * - `'scene-preference'`: read the user's global Canvas-tab rectangle/square toggle
- *   (`useCardStyleStore`) — today's Scene behavior, preserved exactly.
- * - `{ fixed: string }`: a Tailwind aspect class baked into the node type itself,
- *   independent of that toggle (Plot Point/Thought — shape now signals type). */
-type AspectSource = 'scene-preference' | { fixed: string }
+/** A Tailwind aspect class baked into the node type itself — shape signals type. */
+type AspectSource = { fixed: string }
 
 interface BaseNodeConfig {
   accentClass: string
@@ -212,8 +211,8 @@ interface BaseNodeConfig {
 
 /** The node-card redesign (docs/10 node canvas redesign, task FE-B): a main image area
  * (the scene's first attached image per the backend's order — explicit `order_index` first,
- * else newest — else the original dashed-border placeholder), a 3-button action row below the
- * card (Enhance/Duplicate/⋯), and — beside the card — a vertical strip of up to 4 more
+ * else newest — else the original dashed-border placeholder), a 2-button action row below the
+ * card (Duplicate on the left, ⋯ on the right), and — beside the card — a vertical strip of up to 4 more
  * attached-image thumbnails. Only Duplicate and the ⋯ trigger stop click propagation;
  * everything else (header, image, title, description, thumbnail strip) lets the click
  * bubble up to xyflow's `onNodeClick`, which is what opens the `NodeEditor` drawer. */
@@ -221,9 +220,6 @@ function BaseNode(
   { data, selected, positionAbsoluteX, positionAbsoluteY }: NodeProps<SceneFlowNode>,
   { accentClass, icon: Icon, label, aspectSource, cardRadiusClass = 'rounded-2xl' }: BaseNodeConfig,
 ) {
-  // Called unconditionally (rules of hooks) regardless of `aspectSource` — its value only
-  // feeds `aspectClass` below when a node type actually opts into following it.
-  const cardStyle = useCardStyleStore((state) => state.cardStyle)
   const { data: images, isLoading: imagesLoading, isError: imagesError } = useEntityImages('scene', data.sceneId)
   const createNode = useCreateNode(data.bookId)
   const removeFromCanvas = useRemoveFromCanvas(data.bookId)
@@ -244,12 +240,7 @@ function BaseNode(
   // rather than reading an empty `mainImage`/`thumbnails` as "confirmed no images".
   const mainImage = images?.[0] ?? null
   const thumbnails = (images ?? []).slice(0, 4)
-  const aspectClass =
-    aspectSource === 'scene-preference'
-      ? cardStyle === 'square'
-        ? 'aspect-square'
-        : 'aspect-[16/10]'
-      : aspectSource.fixed
+  const aspectClass = aspectSource.fixed
 
   function handleDuplicate(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
@@ -318,31 +309,26 @@ function BaseNode(
         </div>
 
         <div className="flex items-center justify-between px-1">
+          {/* Duplicate now sits on the LEFT (the old left-hand Enhance ✨ button was removed
+              per PHASE13 follow-up — enhancing still lives inside the node editor's Title and
+              Description fields). The ⋯ menu stays on the right. */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-lg" className="rounded-full">
-                <Sparkles className="size-4" />
+              <Button
+                variant="ghost"
+                size="icon-lg"
+                className="rounded-full"
+                aria-label="Duplicate"
+                onClick={handleDuplicate}
+                disabled={createNode.isPending}
+              >
+                <Copy className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open to enhance</TooltipContent>
+            <TooltipContent>Duplicate</TooltipContent>
           </Tooltip>
 
           <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-lg"
-                  className="rounded-full"
-                  aria-label="Duplicate"
-                  onClick={handleDuplicate}
-                  disabled={createNode.isPending}
-                >
-                  <Copy className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Duplicate</TooltipContent>
-            </Tooltip>
 
             {/* Controlled `Popover` wraps the whole `DropdownMenu`, anchored to it via
                 `PopoverAnchor` — a Radix `Popover` can't nest its trigger inside a
@@ -463,19 +449,18 @@ function BaseNode(
   )
 }
 
-/** node_type="scene" — indigo, the default prose beat. Shape follows the user's global
- * Canvas-tab rectangle/square toggle (`useCardStyleStore`), exactly as before this task. */
+/** node_type="scene" — indigo, the default prose beat. Always a wide rectangle. */
 export function SceneNode(props: NodeProps<SceneFlowNode>) {
   return BaseNode(props, {
     accentClass: 'bg-[oklch(0.54_0.21_277)]',
     icon: Clapperboard,
     label: 'Scene',
-    aspectSource: 'scene-preference',
+    aspectSource: { fixed: 'aspect-[16/10]' },
   })
 }
 
 /** node_type="plot_point" — amber, a structural beat/turn. Always a vertical rectangle
- * (taller than wide) regardless of the Scene shape toggle, so shape itself signals type. */
+ * (taller than wide), so shape itself signals type. */
 export function PlotPointNode(props: NodeProps<SceneFlowNode>) {
   return BaseNode(props, {
     accentClass: 'bg-[oklch(0.7_0.16_55)]',
@@ -486,7 +471,7 @@ export function PlotPointNode(props: NodeProps<SceneFlowNode>) {
 }
 
 /** node_type="thought" — cyan, a loose idea not yet a scene. Always square with rounder
- * corners than every other node type, regardless of the Scene shape toggle. */
+ * corners than every other node type. */
 export function ThoughtNode(props: NodeProps<SceneFlowNode>) {
   return BaseNode(props, {
     accentClass: 'bg-[oklch(0.6_0.13_195)]',

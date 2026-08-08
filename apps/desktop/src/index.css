@@ -73,7 +73,20 @@
   --reading-measure: 65ch;
 }
 
-.dark {
+/* ============================================================================
+   THEME TOKEN BLOCKS
+   Four themes, one mechanism: `document.documentElement.dataset.theme` (set by
+   stores/theme.ts) selects which `[data-theme='…']` block below supplies the
+   semantic token VALUES — `:root` above only ever holds the Day values as the
+   fallback/default. `.dark` (further below) is now purely the *carrier* class
+   Tailwind's `dark:` variant keys off (`@custom-variant dark (&:is(.dark *))`
+   at the top of this file) — it is added for the two dark-family themes
+   (Night, Sunset) so the existing 33 `dark:` utilities across the app keep
+   working unchanged; it no longer needs to hold token values itself since
+   those now live in the attribute blocks below.
+   ========================================================================== */
+
+[data-theme='night'] {
   /* ── chrome · Night (deep charcoal panda, never pure black) ── */
   --background: oklch(0.17 0.006 285);
   --foreground: oklch(0.94 0.003 286);
@@ -120,6 +133,118 @@
   /* ── manuscript reading surface (Night · soft gray, docs/10 §1) ── */
   --manuscript-bg: #1e1e24;
   --manuscript-foreground: #e8e6e1;
+}
+
+[data-theme='sunset'] {
+  /* ── chrome · Sunset (dark-family — cool charcoal-green + warm clay accents) ── */
+  --background: oklch(0.218 0.012 167);
+  --foreground: oklch(0.882 0.034 48);
+  --card: oklch(0.331 0.014 167);
+  --card-foreground: oklch(0.882 0.034 48);
+  --popover: oklch(0.331 0.014 167);
+  --popover-foreground: oklch(0.882 0.034 48);
+  --primary: oklch(0.753 0.042 72);
+  --primary-foreground: oklch(0.218 0.012 167);
+  --secondary: oklch(0.331 0.014 167);
+  --secondary-foreground: oklch(0.882 0.034 48);
+  --muted: oklch(0.331 0.014 167);
+  --muted-foreground: oklch(0.753 0.042 72);
+  --accent: oklch(0.378 0.018 162);
+  --accent-foreground: oklch(0.882 0.034 48);
+  --destructive: oklch(0.63 0.2 25); /* reused from Night — same dark-family destructive red */
+  --destructive-foreground: oklch(0.952 0.014 58);
+  --border: oklch(0.415 0.018 170);
+  --input: oklch(0.415 0.018 170);
+  --ring: oklch(0.753 0.042 72);
+
+  /* ── charts (reused from Night verbatim — dark-family chart set) ── */
+  --chart-1: oklch(0.64 0.19 277);
+  --chart-2: oklch(0.7 0.13 195);
+  --chart-3: oklch(0.72 0.15 155);
+  --chart-4: oklch(0.75 0.16 60);
+  --chart-5: oklch(0.64 0.2 300);
+
+  --sidebar: oklch(0.202 0.011 164);
+  --sidebar-foreground: oklch(0.882 0.034 48);
+  --sidebar-primary: oklch(0.753 0.042 72);
+  --sidebar-primary-foreground: oklch(0.218 0.012 167);
+  --sidebar-accent: oklch(0.331 0.014 167);
+  --sidebar-accent-foreground: oklch(0.882 0.034 48);
+  --sidebar-border: oklch(0.415 0.018 170);
+  --sidebar-ring: oklch(0.753 0.042 72);
+
+  /* ── glassmorphism (reused from Night verbatim) ── */
+  --glass-bg: oklch(1 0 0 / 0.05);
+  --glass-border: oklch(1 0 0 / 0.1);
+  --glass-highlight: oklch(1 0 0 / 0.12);
+  --glass-shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 10px oklch(0 0 0 / 0.35);
+  --glass-blur: 20px;
+
+  /* ── manuscript reading surface (Sunset · deep clay-green) ── */
+  --manuscript-bg: #1b211d;
+  --manuscript-foreground: #e8ddd4;
+}
+
+[data-theme='sunrise'] {
+  /* ── chrome · Sunrise (light-family — warm cream-rose, no .dark) ── */
+  --background: oklch(0.882 0.034 48);
+  --foreground: oklch(0.33 0.062 2);
+  --card: oklch(0.939 0.013 36);
+  --card-foreground: oklch(0.33 0.062 2);
+  --popover: oklch(0.939 0.013 36);
+  --popover-foreground: oklch(0.33 0.062 2);
+  --primary: oklch(0.472 0.105 3); /* darkened from the originally-supplied #a04d66 (~3.98:1 on this bg, fails AA text) to #8a3f56 (~5:1) — reviewer should finalize */
+  --primary-foreground: oklch(0.951 0.013 41);
+  --secondary: oklch(0.939 0.013 36);
+  --secondary-foreground: oklch(0.33 0.062 2);
+  --muted: oklch(0.939 0.013 36);
+  --muted-foreground: oklch(0.43 0.036 73); /* darkened from #685844 for AA headroom */
+  --accent: oklch(0.917 0.031 46);
+  --accent-foreground: oklch(0.33 0.062 2);
+  --destructive: oklch(0.58 0.22 27); /* reused from Day — same light-family destructive red */
+  --destructive-foreground: oklch(0.972 0.017 85);
+  /* Darkened from oklch(0.846…) (~1.1:1, nearly invisible on the cream bg) to ~1.3:1 — the
+     same subtle-border contrast Day itself uses (Day border is ~1.25:1). Not pushed to the
+     3:1 WCAG-1.4.11 control-boundary bar on purpose: Day/Night borders are also sub-3:1 by
+     design (separation comes from fills/glass + the focus ring, which passes AA), so matching
+     that posture keeps the four themes visually consistent. */
+  --border: oklch(0.8 0.016 32);
+  --input: oklch(0.8 0.016 32);
+  --ring: oklch(0.472 0.105 3);
+
+  /* ── charts (reused from Day verbatim — light-family chart set) ── */
+  --chart-1: oklch(0.54 0.21 277);
+  --chart-2: oklch(0.6 0.13 195);
+  --chart-3: oklch(0.66 0.15 155);
+  --chart-4: oklch(0.7 0.16 55);
+  --chart-5: oklch(0.55 0.2 300);
+
+  --sidebar: oklch(0.907 0.027 53);
+  --sidebar-foreground: oklch(0.33 0.062 2);
+  --sidebar-primary: oklch(0.472 0.105 3);
+  --sidebar-primary-foreground: oklch(0.951 0.013 41);
+  --sidebar-accent: oklch(0.917 0.031 46);
+  --sidebar-accent-foreground: oklch(0.33 0.062 2);
+  --sidebar-border: oklch(0.846 0.016 32);
+  --sidebar-ring: oklch(0.472 0.105 3);
+
+  /* ── glassmorphism (reused from Day verbatim) ── */
+  --glass-bg: oklch(1 0 0 / 0.55);
+  --glass-border: oklch(0.2 0 0 / 0.08);
+  --glass-highlight: oklch(1 0 0 / 0.7);
+  --glass-shadow: 0 8px 30px oklch(0.2 0 0 / 0.1), 0 2px 8px oklch(0.2 0 0 / 0.06);
+  --glass-blur: 18px;
+
+  /* ── manuscript reading surface (Sunrise · warm blush cream) ── */
+  --manuscript-bg: #f6ece3;
+  --manuscript-foreground: #3a2028;
+}
+
+/* Purely the `dark:` variant carrier now (see block comment above) — toggled onto <html>
+   alongside `data-theme` for the two dark-family themes (Night, Sunset) by stores/theme.ts,
+   so every existing `dark:` utility across the app keeps resolving exactly as before. Holds
+   no token values itself anymore; those live in the `[data-theme='…']` blocks above. */
+.dark {
 }
 
 @theme inline {
@@ -273,48 +398,6 @@
   border-color: transparent;
 }
 
-/* Sliding pill selector for the Book screen's card-style toggle (PHASE-UI-EFFECTS.md #3),
-   `book-screen.tsx`. Unlike `.wobbly-tabs`'s `<WobblyIndicator>` (which measures
-   `getBoundingClientRect` on every change), this pill's position/size comes entirely from
-   CSS Anchor Positioning: each radio's `<label>` is an anchor (`anchor-name`, keyed off
-   `data-card-style`), and the pill switches which anchor it targets via a plain className
-   swap (`--rectangle`/`--square`) driven by the `cardStyle` store value, then `anchor()`
-   pins all four edges to that anchor's box so the pill exactly matches the active label's
-   size/position with zero JS measurement. Safe to use without a non-anchor-positioning
-   fallback here — this app's shell is WebView2/Chromium, which has shipped CSS Anchor
-   Positioning unflagged since Chrome 125. */
-.card-style-toggle {
-  position: relative;
-}
-.card-style-toggle label[data-card-style='rectangle'] {
-  anchor-name: --qn-card-style-rectangle;
-}
-.card-style-toggle label[data-card-style='square'] {
-  anchor-name: --qn-card-style-square;
-}
-.card-style-pill {
-  position: absolute;
-  z-index: 0;
-  top: anchor(top);
-  bottom: anchor(bottom);
-  left: anchor(left);
-  right: anchor(right);
-  /* Same overshoot "wobble" easing as `WobblyIndicator` for a consistent feel. */
-  transition:
-    left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-    right 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.card-style-pill--rectangle {
-  position-anchor: --qn-card-style-rectangle;
-}
-.card-style-pill--square {
-  position-anchor: --qn-card-style-square;
-}
-/* Gated by `useDelight().motionOk` (calm / prefers-reduced-motion) — instant snap, no slide. */
-.card-style-pill--instant {
-  transition: none;
-}
-
 /* Holographic foil hover (PHASE-UI-EFFECTS.md #4), `library-screen.tsx`'s Book cards.
    `.holo-card::after` is a conic-gradient foil sheet built from the existing `--chart-*`
    tokens (already tuned per-theme, so the foil never hardcodes a color that would clash in
@@ -324,8 +407,7 @@
    (the risk flagged in PHASE-UI-EFFECTS.md's effect #4 research). The gradient itself is
    static (a fixed conic sweep, no animation) so it's safe to reveal unconditionally; only
    the `hue-rotate` sweep is genuine animation, and that's opt-in via `.holo-card--motion`
-   (added in `library-screen.tsx` only when `useDelight().motionOk`), exactly like
-   `.card-style-pill--instant` above. */
+   (added in `library-screen.tsx` only when `useDelight().motionOk`). */
 .holo-card {
   position: relative;
   overflow: hidden;
@@ -468,6 +550,287 @@
   cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg stroke='black' stroke-width='1.4' fill='none'%3E%3Cline x1='12' y1='2' x2='12' y2='9'/%3E%3Cline x1='12' y1='15' x2='12' y2='22'/%3E%3Cline x1='2' y1='12' x2='9' y2='12'/%3E%3Cline x1='15' y1='12' x2='22' y2='12'/%3E%3Ccircle cx='12' cy='12' r='4' fill='white'/%3E%3C/g%3E%3C/svg%3E")
       12 12,
     crosshair !important;
+}
+
+/* Conic-gradient rainbow glow on PRIMARY buttons only (`.qn-glow-btn`, the `default` variant's
+   marker class in `components/ui/button.tsx`) — adapted from a reference "glow button" hover
+   effect. Double-gated per docs/10 §8's delight rules: (1) `html[data-delight='playful']`,
+   the same `<html>` attribute `lib/apply-settings.ts`'s `applyDelight()` already mirrors from
+   `app_settings.delight_level` (mounted once in `settings-provider.tsx` — no new DOM signal
+   needed, this reuses it), and (2) `prefers-reduced-motion: no-preference`, wrapping the whole
+   block so reduced-motion users get the plain button with zero glow, zero transition, exactly
+   as today. Outside Playful, or under reduced-motion, or on every other variant
+   (ghost/outline/secondary/destructive/link), nothing here applies at all.
+
+   `.qn-glow-btn` itself (`relative isolate`, set unconditionally in button.tsx alongside the
+   marker class) only changes *positioning context*, not appearance — `isolate` gives the
+   button its own stacking context so the `::before`'s `z-index: -1` tucks behind the button's
+   own background without ever slipping behind unrelated sibling/ancestor content. `::before`
+   is absolutely positioned and blurred (`filter: blur(...)`), so it never affects layout or the
+   button's click target (`pointer-events: none`), and starts at `opacity: 0` — invisible and
+   inert until both gates pass AND the pointer/keyboard focus is actually on the button. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-delight='playful'] .qn-glow-btn::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(14px);
+    transition: opacity 0.4s ease;
+    background: conic-gradient(
+      from 0deg,
+      color(display-p3 1 0.4 0.4),
+      color(display-p3 1 0.85 0.3),
+      color(display-p3 0.5 1 0.5),
+      color(display-p3 0.4 0.8 1),
+      color(display-p3 0.7 0.4 1),
+      color(display-p3 1 0.4 0.4)
+    );
+  }
+
+  /* hsl fallback for any renderer without `color(display-p3 …)` support — WebView2/Chromium
+     (this app's actual runtime) does support P3, so this branch is a safety net, not the
+     common path. */
+  @supports not (color: color(display-p3 1 1 1)) {
+    html[data-delight='playful'] .qn-glow-btn::before {
+      background: conic-gradient(
+        from 0deg,
+        hsl(0 90% 65%),
+        hsl(45 95% 60%),
+        hsl(140 70% 55%),
+        hsl(200 90% 60%),
+        hsl(280 80% 65%),
+        hsl(0 90% 65%)
+      );
+    }
+  }
+
+  @keyframes qn-glow-rotate {
+    to {
+      filter: blur(14px) hue-rotate(360deg);
+    }
+  }
+  html[data-delight='playful'] .qn-glow-btn:hover::before,
+  html[data-delight='playful'] .qn-glow-btn:focus-visible::before {
+    opacity: 0.6;
+    animation: qn-glow-rotate 3s linear infinite;
+  }
+}
+
+/* Scroll-reveal highlight (`components/ui/scroll-highlight.tsx`) — a `<mark>`-style colored
+   highlight that wipes in left→right as its text scrolls into view, plus an optional accent
+   badge. CHROME / app-authored text only, per docs/10 "playfulness stays in UI chrome, never
+   inside manuscript text" — never used on the manuscript reading surface or raw user prose.
+
+   `--qn-highlighted` (registered below via `@property` so it animates/transitions as a real
+   number, not a discrete jump) drives the wipe in every path: the `@supports` branch's CSS
+   keyframe (driven by `animation-timeline: view()`), the `IntersectionObserver` fallback
+   (the component sets it directly via inline style, 0→1 and back), and the reduced-motion
+   static state (fixed at 1, no animation/observer at all — see `.qn-highlight--static`).
+
+   Colors come from theme tokens, not hardcoded values: the default tint is a translucent
+   slice of `--primary` (`color-mix(in oklab, ...)`), so it already resolves correctly across
+   all four themes (Day, Night, Sunset, Sunrise) without a light/dark branch. The optional
+   `hue` prop overrides `--qn-highlight-hue` with a mid-lightness `oklch()` instead of a
+   theme-blind `hsl(0 0% ...)` pair. Text itself always stays `var(--foreground)`. */
+@property --qn-highlighted {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.qn-highlight {
+  --qn-highlight-color: color-mix(in oklab, var(--qn-highlight-hue, var(--primary)) 32%, transparent);
+  position: relative;
+  display: inline;
+  color: var(--foreground);
+  background: transparent;
+  padding: 0 0.05em;
+  border-radius: 0.2em;
+}
+
+.qn-highlight span {
+  --qn-highlighted: 0;
+  background-image: linear-gradient(90deg, var(--qn-highlight-color), var(--qn-highlight-color));
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: calc(var(--qn-highlighted) * 100%) 100%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Reduced-motion / no-JS-needed final state — fully painted immediately, no animation and no
+   `IntersectionObserver` (the component itself skips mounting the observer in this case; this
+   class covers the CSS half of that same guarantee). */
+.qn-highlight--static span {
+  --qn-highlighted: 1;
+}
+
+/* `animation-timeline: view()` path — a pure-CSS wipe, only ever active where the browser
+   actually supports it (the component feature-detects with `CSS.supports` and only adds this
+   class in that case, so the `@supports` guard below is a second, belt-and-suspenders check
+   rather than the only one). */
+@supports (animation-timeline: view()) {
+  .qn-highlight--view span {
+    animation: qn-highlight-wipe 1 linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 45%;
+  }
+}
+
+@keyframes qn-highlight-wipe {
+  from {
+    --qn-highlighted: 0;
+  }
+  to {
+    --qn-highlighted: 1;
+  }
+}
+
+/* `IntersectionObserver` fallback path — the component sets `--qn-highlighted` directly via
+   inline style on entry/exit; this transition is what turns that hard 0/1 flip into the same
+   smooth wipe the `animation-timeline` path gets for free. */
+.qn-highlight--observed span {
+  transition: --qn-highlighted 0.5s ease-out;
+}
+
+/* Optional accent badge (reference's `mark::after`/`data-author`) — only rendered by the
+   component when a `badge` prop is passed, and always `aria-hidden` since it's decorative.
+   Uses the highlight's own color rather than a second hardcoded one. */
+.qn-highlight-badge {
+  position: absolute;
+  top: -0.7em;
+  right: -0.35em;
+  padding: 0.05em 0.45em;
+  font-size: 0.6em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  border-radius: 999px;
+  color: var(--foreground);
+  background: var(--qn-highlight-color);
+  pointer-events: none;
+}
+
+/* ── "Slice-to-delete" list-row removal (Playful + motion only) ────────────────────────────
+   `components/ui/slice-delete.tsx`'s `useSliceDelete()` decides IF this plays at all — it
+   only ever adds `.qn-slice-row`/`.qn-slice-chip` when `delight_level === 'playful'` AND
+   `prefers-reduced-motion: no-preference`; everywhere else the element is removed instantly
+   with no class added, so nothing here runs. This block is pure presentation; the reduced-
+   motion backstop just below (and the global one at the bottom of this file) is a second,
+   belt-and-suspenders guard in case the class is ever applied unexpectedly.
+
+   Two variants, same ~0.6s timeline so they read as one consistent gesture:
+     .qn-slice-row  — TEXT rows (screenplay elements, etc.): a thin glowing blade sweeps
+                      left→right across the row (::after), then the row itself "closes" —
+                      a quick skew/scale collapse + fade, evoking the reference's slice.
+     .qn-slice-chip — circular chips/thumbnails (Codex chips, character chips, image
+                      thumbnails): a literal sweep line makes no visual sense on a circle/
+                      image, so this is the graceful equivalent — scale-out + fade only,
+                      same duration/easing.
+
+   Both animations set `pointer-events: none` for their duration — a row/chip mid-removal
+   should not be clickable again (also helps the double-fire guard in `slice-delete.tsx`,
+   which already covers this in JS regardless). */
+.qn-slice-row {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  animation: qn-slice-row-collapse 0.6s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+.qn-slice-row::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--destructive) 45%,
+    var(--destructive) 55%,
+    transparent
+  );
+  box-shadow: 0 0 10px 1px var(--destructive);
+  opacity: 0;
+  transform: translateX(-10%) skewX(-10deg);
+  z-index: 5;
+  animation: qn-slice-sweep 0.6s linear forwards;
+}
+
+@keyframes qn-slice-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-10%) skewX(-10deg);
+  }
+  10% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(calc(100% + 10px)) skewX(-10deg);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(100% + 10px)) skewX(-10deg);
+  }
+}
+
+@keyframes qn-slice-row-collapse {
+  0%,
+  35% {
+    opacity: 1;
+    transform: scaleY(1) scaleX(1) skewX(0deg);
+    filter: brightness(1);
+  }
+  55% {
+    opacity: 1;
+    transform: scaleY(0.92) scaleX(0.99) skewX(-2deg);
+    filter: brightness(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(0.04) scaleX(0.82) skewX(-2deg);
+    filter: brightness(1);
+    margin-block: 0;
+  }
+}
+
+.qn-slice-chip {
+  pointer-events: none;
+  animation: qn-slice-chip-out 0.6s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+@keyframes qn-slice-chip-out {
+  0%,
+  30% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.06) rotate(-3deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(8deg);
+  }
+}
+
+/* Belt-and-suspenders — `useSliceDelete()` already gates the class on reduced-motion, but
+   in case it's ever applied anyway, jump straight to the end state with no motion. */
+@media (prefers-reduced-motion: reduce) {
+  .qn-slice-row,
+  .qn-slice-row::after,
+  .qn-slice-chip {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Respect reduced-motion globally as a backstop (docs/10). */

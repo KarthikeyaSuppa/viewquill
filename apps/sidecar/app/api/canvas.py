@@ -140,6 +140,7 @@ def create_edge(book_id: str, payload: EdgeCreate, db: Session = Depends(get_db)
         target_handle=payload.target_handle,
         connection_type=payload.connection_type,
         label=payload.label,
+        sequence_weight=payload.sequence_weight,
     )
     return CanvasEdge.model_validate(edge)
 
@@ -207,10 +208,19 @@ def _to_undo_action_read(undo_log) -> UndoActionRead:
     scene_payload = undo_log.payload.get("scene") if undo_log.payload else None
     if scene_payload:
         scene_id = scene_payload.get("id")
+    edge_id = None
+    if undo_log.payload:
+        if undo_log.action_type in ("create_edge", "delete_edge"):
+            edge_payload = undo_log.payload.get("edge")
+            if edge_payload:
+                edge_id = edge_payload.get("id")
+        elif undo_log.action_type == "update_edge":
+            edge_id = undo_log.payload.get("edge_id")
     return UndoActionRead(
         id=undo_log.id,
         action_type=undo_log.action_type,
         scene_id=scene_id,
+        edge_id=edge_id,
         undone_at=undo_log.undone_at,
         created_at=undo_log.created_at,
     )

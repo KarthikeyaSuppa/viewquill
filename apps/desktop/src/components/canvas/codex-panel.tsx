@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react'
 import {
   BookOpen,
-  ChevronDown,
+  Check,
+  ChevronLeft,
   Flag,
-  Link2,
   MapPin,
   Pencil,
   Plus,
   Search,
   Trash2,
-  Unlink2,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -44,8 +43,10 @@ import {
 } from '@/queries/codex'
 import { CodexEntryDialog } from '@/components/codex/codex-entry-dialog'
 import { useBooks } from '@/queries/books'
+import { imageThumbUrl } from '@/queries/images'
 import type { CodexEntry, CodexEntryType } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useSliceDelete } from '@/components/ui/slice-delete'
 
 const TYPE_OPTIONS: { value: CodexEntryType; label: string; icon: typeof Users }[] = [
   { value: 'character', label: 'Characters', icon: Users },
@@ -67,11 +68,15 @@ function matchesQuery(entry: CodexEntry, query: string): boolean {
  * The Codex side panel (docs/01-PRODUCT-VISION.md §Codex, docs/03-DATA-MODEL.md
  * `codex_entries`/`codex_scene_links`, docs/06 Phase 2 task H3).
  *
- * Canvas-scoped quick view over the Codex: list + filter + per-Scene link/unlink toggle.
- * Creating and editing entries both defer to the full `CodexEntryDialog` (custom fields,
- * relationships, image, arc states) rather than duplicating any of that here — this panel
- * only owns the list, the type filter, and the link-to-selected-node toggle. Defaults to
- * Characters with a small filter for the other three entry types.
+ * A full-height left sidebar drawer (Phase 13 Workstream B) docked to the canvas area's
+ * left edge — entries render as circular chips in a wrapping grid rather than pill rows,
+ * so the drawer reads more like a character/asset rail than a list. Logic is unchanged
+ * from the earlier bottom-left floating card: type filter + search + per-Scene
+ * link/unlink toggle. Creating and editing entries both defer to the full
+ * `CodexEntryDialog` (custom fields, relationships, image, arc states) rather than
+ * duplicating any of that here — this panel only owns the grid, the type filter, and the
+ * link-to-selected-node toggle. Defaults to Characters with a small filter for the other
+ * three entry types.
  */
 export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   const [open, setOpen] = useState(false)
@@ -113,7 +118,7 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
 
   if (!open) {
     return (
-      <div className="pointer-events-auto absolute bottom-4 left-4 z-10">
+      <div className="pointer-events-auto absolute left-4 top-4 z-10">
         <Button size="sm" variant="secondary" className="glass glass-edge" onClick={() => setOpen(true)}>
           <Users className="size-4" />
           Codex
@@ -127,11 +132,11 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   const activeTypeOption = TYPE_OPTIONS.find((t) => t.value === entryType)
 
   return (
-    <div className="glass glass-edge pointer-events-auto absolute bottom-4 left-4 z-10 flex max-h-[65%] w-80 flex-col overflow-hidden rounded-2xl">
+    <div className="glass glass-edge pointer-events-auto absolute inset-y-0 left-0 z-10 flex w-80 flex-col overflow-hidden rounded-r-2xl">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
         <span className="text-sm font-semibold">Codex</span>
         <Button variant="ghost" size="icon-sm" aria-label="Collapse Codex panel" onClick={() => setOpen(false)}>
-          <ChevronDown className="size-4" />
+          <ChevronLeft className="size-4" />
         </Button>
       </div>
 
@@ -167,30 +172,28 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
 
         {sceneId && (
           <p className="text-xs text-muted-foreground">
-            <Link2 className="mr-1 inline size-3" />
-            Toggle the link icon to attach/detach an entry from the selected node.
+            Click a circle to attach/detach it from the selected node.
           </p>
         )}
       </div>
 
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-2 px-3 py-2.5">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-wrap gap-3 p-3">
           {isLoading ? (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <p className="w-full text-xs text-muted-foreground">Loading…</p>
           ) : allRows.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="w-full text-xs text-muted-foreground">
               No {activeTypeOption?.label.toLowerCase()} yet.
             </p>
           ) : rows.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="w-full text-xs text-muted-foreground">
               No {activeTypeOption?.label.toLowerCase()} match “{query.trim()}”.
             </p>
           ) : (
             rows.map((entry) => (
-              <CodexEntryRow
+              <CodexEntryChip
                 key={entry.id}
                 entry={entry}
-                icon={activeTypeOption?.icon}
                 linked={sceneId ? linkedIds.has(entry.id) : undefined}
                 linkPending={linkToScene.isPending || unlinkFromScene.isPending}
                 onToggleLink={sceneId ? () => handleToggleLink(entry) : undefined}
@@ -228,22 +231,21 @@ export function CodexPanel({ sceneId }: { sceneId: string | undefined }) {
   )
 }
 
-/** One Codex entry row — type icon + name/summary, a link toggle, an edit button that opens
- * the full `CodexEntryDialog`, and delete. */
-function CodexEntryRow({
+/** One Codex entry as a circular chip — image thumbnail (or initials) in a circle, name
+ * underneath, link state as a ring/checkmark badge on the circle itself, and edit/delete
+ * surfaced via a small hover/focus overlay so the circle stays the primary, uncluttered
+ * link/unlink target. */
+function CodexEntryChip({
   entry,
-  icon: TypeIcon,
   linked,
   linkPending,
   onToggleLink,
   onOpenEditor,
 }: {
   entry: CodexEntry
-  /** The active type filter's icon (from `TYPE_OPTIONS`) — shown small next to the name so a
-   * row's type reads at a glance even though the list is always pre-filtered to one type. */
-  icon: typeof Users | undefined
-  /** undefined when no canvas node is selected — the link toggle then renders disabled with a
-   * tooltip explaining why, rather than disappearing outright (discoverability). */
+  /** undefined when no canvas node is selected — the circle then falls back to opening the
+   * editor on click, with a tooltip explaining why linking isn't available (discoverability
+   * preserved even without a rectangular disabled-button affordance). */
   linked: boolean | undefined
   linkPending: boolean
   onToggleLink: (() => void) | undefined
@@ -252,60 +254,93 @@ function CodexEntryRow({
 }) {
   const deleteCodex = useDeleteCodex()
   const linkAvailable = onToggleLink !== undefined
+  const initials = entry.name.trim().slice(0, 3).toUpperCase() || '?'
+
+  // Slice-to-delete removal (Playful + motion only, instant everywhere else — see
+  // `components/ui/slice-delete.tsx`). The confirm dialog and the delete mutation itself
+  // are unchanged; this only delays the chip's visual unmount by the animation, and
+  // `onCommit` is guaranteed to still fire even if it's interrupted (see that file).
+  const sliceDelete = useSliceDelete(() => deleteCodex.mutate(entry.id), 'chip')
 
   return (
-    <div className="flex items-start gap-1.5 rounded-lg border border-border p-2 transition-colors hover:bg-accent/40">
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-          {TypeIcon && <TypeIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
-          <span className="truncate">{entry.name}</span>
-        </p>
-        {entry.summary && <p className="line-clamp-2 text-xs text-muted-foreground">{entry.summary}</p>}
-      </div>
+    <div
+      className={cn('group relative flex w-20 flex-col items-center gap-1', sliceDelete.className)}
+      onAnimationEnd={sliceDelete.onAnimationEnd}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onToggleLink ?? onOpenEditor}
+            disabled={linkAvailable && linkPending}
+            aria-pressed={linkAvailable ? linked : undefined}
+            aria-label={
+              !linkAvailable
+                ? `Select a node on canvas to link “${entry.name}” — opens editor instead`
+                : linked
+                  ? `Unlink “${entry.name}” from selected node`
+                  : `Link “${entry.name}” to selected node`
+            }
+            className={cn(
+              'relative flex size-16 items-center justify-center overflow-hidden rounded-full border-2 bg-muted text-sm font-semibold text-muted-foreground transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none',
+              linked ? 'border-primary text-primary' : 'border-border hover:border-primary/50',
+            )}
+          >
+            {entry.primary_image_id ? (
+              <img
+                src={imageThumbUrl(entry.primary_image_id)}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              initials
+            )}
 
-      <div className="flex shrink-0 items-center gap-0.5">
+            {linked && (
+              <span className="absolute right-0 bottom-0 flex size-5 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground">
+                <Check className="size-3" />
+              </span>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {entry.name}
+          {' — '}
+          {!linkAvailable
+            ? 'select a node on canvas to link (click opens editor)'
+            : linked
+              ? 'linked to selected node — click to unlink'
+              : 'click to link to selected node'}
+        </TooltipContent>
+      </Tooltip>
+
+      {/* Edit/delete overlay — hidden until the chip is hovered or focused so the circle
+          itself stays the clean, primary link/unlink target. */}
+      <div className="absolute -top-1 -right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <Tooltip>
           <TooltipTrigger asChild>
-            <span>
-              <Button
-                variant={linked ? 'secondary' : 'ghost'}
-                size="icon-sm"
-                onClick={onToggleLink}
-                disabled={!linkAvailable || linkPending}
-                aria-pressed={linkAvailable ? linked : undefined}
-                aria-label={
-                  !linkAvailable
-                    ? 'Select a node on canvas to link'
-                    : linked
-                      ? 'Unlink from selected node'
-                      : 'Link to selected node'
-                }
-                className={cn(linked && 'text-primary')}
-              >
-                {linked ? <Unlink2 className="size-3.5" /> : <Link2 className="size-3.5" />}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {!linkAvailable
-              ? 'Select a node on canvas to link'
-              : linked
-                ? 'Linked to selected node — click to unlink'
-                : 'Link to selected node'}
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Edit entry" onClick={onOpenEditor}>
-              <Pencil className="size-3.5" />
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              className="size-6 rounded-full shadow-sm"
+              aria-label={`Edit “${entry.name}”`}
+              onClick={onOpenEditor}
+            >
+              <Pencil className="size-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Edit — name, custom fields, relationships, image, arc states</TooltipContent>
         </Tooltip>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Delete entry" disabled={deleteCodex.isPending}>
-              <Trash2 className="size-3.5" />
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              className="size-6 rounded-full shadow-sm"
+              aria-label={`Delete “${entry.name}”`}
+              disabled={deleteCodex.isPending}
+            >
+              <Trash2 className="size-3" />
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
@@ -318,13 +353,15 @@ function CodexEntryRow({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={() => deleteCodex.mutate(entry.id)}>
+              <AlertDialogAction variant="destructive" onClick={sliceDelete.startRemove}>
                 Delete permanently
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </div>
+
+      <p className="line-clamp-2 w-full text-center text-xs text-muted-foreground">{entry.name}</p>
     </div>
   )
 }

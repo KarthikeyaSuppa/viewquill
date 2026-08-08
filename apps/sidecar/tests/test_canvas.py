@@ -381,6 +381,285 @@ def test_archived_link_is_invisible_to_canvas_and_not_addressable(client: TestCl
     assert delete_resp.status_code == 404
 
 
+def test_sequence_edges_get_monotonic_weight_and_others_stay_null(client: TestClient) -> None:
+    """``connection_type: 'sequence'`` edges are directional and get an auto-assigned,
+    per-Book monotonic-with-gaps ``sequence_weight``; every other connection_type
+    (including omitted) is undirected and must have ``sequence_weight`` forced null."""
+    book_id = _create_book(client, "Sequence Weight Book")
+    scene_a = _create_scene(client, "Seq Scene A")
+    scene_b = _create_scene(client, "Seq Scene B")
+    scene_c = _create_scene(client, "Seq Scene C")
+    for scene_id in (scene_a, scene_b, scene_c):
+        client.post(f"/books/{book_id}/scenes/{scene_id}")
+
+    first_sequence = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "sequence",
+        },
+    )
+    assert first_sequence.status_code == 201
+    assert first_sequence.json()["sequence_weight"] == 10
+
+    second_sequence = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_b,
+            "target_scene_id": scene_c,
+            "connection_type": "sequence",
+        },
+    )
+    assert second_sequence.status_code == 201
+    assert second_sequence.json()["sequence_weight"] == 20
+
+    reference_edge = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_c,
+            "connection_type": "reference",
+        },
+    )
+    assert reference_edge.status_code == 201
+    assert reference_edge.json()["sequence_weight"] is None
+
+    untyped_edge = client.post(
+        f"/books/{book_id}/edges",
+        json={"source_scene_id": scene_a, "target_scene_id": scene_b},
+    )
+    assert untyped_edge.status_code == 201
+    assert untyped_edge.json()["sequence_weight"] is None
+
+
+def test_patching_connection_type_updates_sequence_weight(client: TestClient) -> None:
+    book_id = _create_book(client, "Patch Sequence Weight Book")
+    scene_a = _create_scene(client, "Patch Seq Scene A")
+    scene_b = _create_scene(client, "Patch Seq Scene B")
+    client.post(f"/books/{book_id}/scenes/{scene_a}")
+    client.post(f"/books/{book_id}/scenes/{scene_b}")
+
+    edge = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "sequence",
+        },
+    )
+    assert edge.status_code == 201
+    edge_id = edge.json()["id"]
+    assert edge.json()["sequence_weight"] == 10
+
+    # sequence -> reference clears the weight to null.
+    to_reference = client.patch(f"/edges/{edge_id}", json={"connection_type": "reference"})
+    assert to_reference.status_code == 200
+    assert to_reference.json()["connection_type"] == "reference"
+    assert to_reference.json()["sequence_weight"] is None
+
+    # reference -> sequence assigns a fresh non-null weight.
+    back_to_sequence = client.patch(f"/edges/{edge_id}", json={"connection_type": "sequence"})
+    assert back_to_sequence.status_code == 200
+    assert back_to_sequence.json()["connection_type"] == "sequence"
+    assert back_to_sequence.json()["sequence_weight"] is not None
+
+
+def test_create_edge_writes_undo_log_row(client: TestClient) -> None:
+    """Workstream B undo follow-up: creating an edge must write exactly one new
+    ``UndoLog`` row with ``action_type="create_edge"`` whose payload contains the edge's
+    real (DB-assigned) id — this test only checks the write's shape, not undo/redo
+    consumption (that's ``test_undo.py``'s surface).
+    """
+    from app.db.base import SessionLocal
+    from app.models.orm import UndoLog
+
+    book_id = _create_book(client, "Undo Create Edge Book")
+    scene_a = _create_scene(client, "Undo Create Edge Scene A")
+    scene_b = _create_scene(client, "Undo Create Edge Scene B")
+    client.post(f"/books/{book_id}/scenes/{scene_a}")
+    client.post(f"/books/{book_id}/scenes/{scene_b}")
+
+    with SessionLocal() as db:
+        before_count = (
+            db.query(UndoLog).filter(UndoLog.book_id == book_id).count()
+        )
+
+    edge_resp = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "causal",
+            "label": "undo create test",
+        },
+    )
+    assert edge_resp.status_code == 201
+    edge_id = edge_resp.json()["id"]
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(UndoLog)
+            .filter(UndoLog.book_id == book_id)
+            .order_by(UndoLog.sequence.desc())
+            .all()
+        )
+        assert len(rows) == before_count + 1
+        row = rows[0]
+        assert row.action_type == "create_edge"
+        assert row.payload["edge"]["id"] == edge_id
+        assert row.payload["edge"]["connection_type"] == "causal"
+
+
+def test_update_edge_connection_type_writes_undo_log_with_sequence_weight(
+    client: TestClient,
+) -> None:
+    """Patching ``connection_type`` alone must produce an ``update_edge`` UndoLog row whose
+    ``before``/``after`` also capture ``sequence_weight``, since it silently changes as a
+    side effect of the connection_type toggle (see canvas_service.update_edge).
+    """
+    from app.db.base import SessionLocal
+    from app.models.orm import UndoLog
+
+    book_id = _create_book(client, "Undo Update Edge Book")
+    scene_a = _create_scene(client, "Undo Update Edge Scene A")
+    scene_b = _create_scene(client, "Undo Update Edge Scene B")
+    client.post(f"/books/{book_id}/scenes/{scene_a}")
+    client.post(f"/books/{book_id}/scenes/{scene_b}")
+
+    edge_resp = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "sequence",
+        },
+    )
+    assert edge_resp.status_code == 201
+    edge_id = edge_resp.json()["id"]
+    original_weight = edge_resp.json()["sequence_weight"]
+    assert original_weight is not None
+
+    with SessionLocal() as db:
+        before_count = (
+            db.query(UndoLog).filter(UndoLog.book_id == book_id).count()
+        )
+
+    patch_resp = client.patch(f"/edges/{edge_id}", json={"connection_type": "reference"})
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["sequence_weight"] is None
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(UndoLog)
+            .filter(UndoLog.book_id == book_id)
+            .order_by(UndoLog.sequence.desc())
+            .all()
+        )
+        assert len(rows) == before_count + 1
+        row = rows[0]
+        assert row.action_type == "update_edge"
+        assert row.payload["edge_id"] == edge_id
+        assert row.payload["before"] == {
+            "connection_type": "sequence",
+            "sequence_weight": original_weight,
+        }
+        assert row.payload["after"] == {
+            "connection_type": "reference",
+            "sequence_weight": None,
+        }
+
+
+def test_update_edge_noop_does_not_write_undo_log(client: TestClient) -> None:
+    """Patching a key to its own current value must not create undo noise."""
+    from app.db.base import SessionLocal
+    from app.models.orm import UndoLog
+
+    book_id = _create_book(client, "Undo Noop Update Edge Book")
+    scene_a = _create_scene(client, "Undo Noop Scene A")
+    scene_b = _create_scene(client, "Undo Noop Scene B")
+    client.post(f"/books/{book_id}/scenes/{scene_a}")
+    client.post(f"/books/{book_id}/scenes/{scene_b}")
+
+    edge_resp = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "causal",
+            "label": "same label",
+        },
+    )
+    assert edge_resp.status_code == 201
+    edge_id = edge_resp.json()["id"]
+
+    with SessionLocal() as db:
+        before_count = (
+            db.query(UndoLog).filter(UndoLog.book_id == book_id).count()
+        )
+
+    patch_resp = client.patch(f"/edges/{edge_id}", json={"label": "same label"})
+    assert patch_resp.status_code == 200
+
+    with SessionLocal() as db:
+        after_count = (
+            db.query(UndoLog).filter(UndoLog.book_id == book_id).count()
+        )
+    assert after_count == before_count
+
+
+def test_delete_edge_writes_undo_log_with_full_snapshot(client: TestClient) -> None:
+    """Deleting an edge must write a ``delete_edge`` UndoLog row with a full pre-delete
+    row snapshot in its payload.
+    """
+    from app.db.base import SessionLocal
+    from app.models.orm import UndoLog
+
+    book_id = _create_book(client, "Undo Delete Edge Book")
+    scene_a = _create_scene(client, "Undo Delete Edge Scene A")
+    scene_b = _create_scene(client, "Undo Delete Edge Scene B")
+    client.post(f"/books/{book_id}/scenes/{scene_a}")
+    client.post(f"/books/{book_id}/scenes/{scene_b}")
+
+    edge_resp = client.post(
+        f"/books/{book_id}/edges",
+        json={
+            "source_scene_id": scene_a,
+            "target_scene_id": scene_b,
+            "connection_type": "contradiction",
+            "label": "to be deleted",
+        },
+    )
+    assert edge_resp.status_code == 201
+    edge_id = edge_resp.json()["id"]
+
+    with SessionLocal() as db:
+        before_count = (
+            db.query(UndoLog).filter(UndoLog.book_id == book_id).count()
+        )
+
+    delete_resp = client.delete(f"/edges/{edge_id}")
+    assert delete_resp.status_code == 204
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(UndoLog)
+            .filter(UndoLog.book_id == book_id)
+            .order_by(UndoLog.sequence.desc())
+            .all()
+        )
+        assert len(rows) == before_count + 1
+        row = rows[0]
+        assert row.action_type == "delete_edge"
+        snapshot = row.payload["edge"]
+        assert snapshot["id"] == edge_id
+        assert snapshot["source_scene_id"] == scene_a
+        assert snapshot["target_scene_id"] == scene_b
+        assert snapshot["connection_type"] == "contradiction"
+        assert snapshot["label"] == "to be deleted"
+        assert snapshot["book_id"] == book_id
+
+
 def test_canvas_and_edges_404_for_missing_book_or_scene(client: TestClient) -> None:
     assert client.get("/books/does-not-exist/canvas").status_code == 404
     assert client.post("/books/does-not-exist/scenes/also-missing").status_code == 404

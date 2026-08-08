@@ -21,6 +21,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollHighlight } from '@/components/ui/scroll-highlight'
 import { useReorderTimeline, useSetTimeline, useTimeline } from '@/queries/outline'
 import type { BookSceneOrder } from '@/lib/api'
 import type { OutlineScene } from '@/components/outline/beat-board'
@@ -37,9 +38,10 @@ export interface TimelineRow {
  * the final tiebreaker instead of raw row id (more meaningful for a fresh, un-ordered
  * timeline where every row's key/index/id would otherwise be arbitrary).
  *
- * Exported so other consumers of the same chronological scene order (e.g.
- * `character-scene-timeline.tsx`'s Gantt x-axis, PHASE-UI-EFFECTS-2.md §3/§5 task 8) reuse
- * this exact ordering instead of re-deriving it. */
+ * Exported so other consumers of the same chronological scene order reuse this exact
+ * ordering instead of re-deriving it. (The Characters tab's Gantt "Timeline" view that
+ * previously reused this was removed in Phase 13; the Outline Timeline is the current
+ * consumer.) */
 export function buildRows(scenes: OutlineScene[], timelineRows: BookSceneOrder[]): TimelineRow[] {
   const rowBySceneId = new Map(timelineRows.map((row) => [row.scene_id, row]))
 
@@ -138,8 +140,8 @@ export function TimelineView({
   if (scenes.length === 0) {
     return (
       <div className="glass glass-edge flex min-h-[240px] items-center justify-center rounded-2xl px-6 text-center text-sm text-muted-foreground">
-        Add scenes on the Canvas first — they’ll show up here to arrange along your story’s
-        timeline.
+        Add scenes on the Canvas first — they’ll show up here to{' '}
+        <ScrollHighlight>arrange along your story’s timeline</ScrollHighlight>.
       </div>
     )
   }
@@ -147,32 +149,38 @@ export function TimelineView({
   const activeRow = activeId ? (rows.find((row) => row.sceneId === activeId) ?? null) : null
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveId(null)}
-    >
-      <div
-        className="glass glass-edge flex max-h-[calc(100vh-20rem)] flex-col gap-2 overflow-y-auto rounded-2xl p-3"
-        role="list"
-        aria-label="Scenes ordered by in-story time"
+    <div className="flex flex-col gap-1.5">
+      <p className="px-1 text-xs font-medium text-muted-foreground">
+        <ScrollHighlight hue={200}>Chronological order</ScrollHighlight> — drag to reorder, or edit
+        the in-story time label per scene.
+      </p>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
       >
-        <SortableContext items={rows.map((row) => row.sceneId)} strategy={verticalListSortingStrategy}>
-          {rows.map((row, index) => (
-            <SortableTimelineRow
-              key={row.sceneId}
-              row={row}
-              isLast={index === rows.length - 1}
-              onLabelChange={handleLabelChange}
-              onLabelCommit={handleLabelCommit}
-            />
-          ))}
-        </SortableContext>
-      </div>
-      <DragOverlay>{activeRow ? <TimelineRowPreview row={activeRow} /> : null}</DragOverlay>
-    </DndContext>
+        <div
+          className="glass glass-edge flex max-h-[calc(100vh-20rem)] flex-col gap-2 overflow-y-auto rounded-2xl p-3"
+          role="list"
+          aria-label="Scenes ordered by in-story time"
+        >
+          <SortableContext items={rows.map((row) => row.sceneId)} strategy={verticalListSortingStrategy}>
+            {rows.map((row, index) => (
+              <SortableTimelineRow
+                key={row.sceneId}
+                row={row}
+                isLast={index === rows.length - 1}
+                onLabelChange={handleLabelChange}
+                onLabelCommit={handleLabelCommit}
+              />
+            ))}
+          </SortableContext>
+        </div>
+        <DragOverlay>{activeRow ? <TimelineRowPreview row={activeRow} /> : null}</DragOverlay>
+      </DndContext>
+    </div>
   )
 }
 

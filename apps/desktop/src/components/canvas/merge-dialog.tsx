@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ScrollHighlight } from '@/components/ui/scroll-highlight'
 import { EnhanceDiff } from '@/components/canvas/enhance-diff'
 import { useAcceptMergeScenes, useMergeScenesSuggestion, useMergeSuggestionParts } from '@/queries/merge'
 import { showUndoToast, useRedoLastAction, useUndoLastAction } from '@/queries/undo'
@@ -124,17 +125,33 @@ export function MergeDialog({ bookId, sourceSceneIds, sourceScenes, open, onOpen
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? handleReject() : onOpenChange(next))}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+      {/* Bounded flex column + an inner scroller. This dialog previously had a width cap only
+          (`sm:max-w-2xl`), and the base `DialogContent` (components/ui/dialog.tsx) sets no
+          vertical bound of its own. Merging N scenes concatenates every source scene's
+          title+description into the diff's "original" side, so a real merge runs to thousands
+          of characters; the centered (`translate-y-[-50%]`) grid then grew off both ends of the
+          viewport with nothing scrollable, pushing `EnhanceDiff`'s Accept/Reject row out of
+          reach entirely. Same fix the Phase 11 systemic dialog-height pass applied to
+          codex-entry-dialog.tsx / image-detail.tsx. The scroll wrapper lives here rather than
+          inside enhance-diff.tsx because that component is shared with the node-editor drawer,
+          which already supplies its own ScrollArea. */}
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{`Merge ${sourceSceneIds.length} scenes`}</DialogTitle>
           <DialogDescription>
             Review the AI-combined scene below, then Accept to replace the source scenes with it, or
-            Reject to leave the canvas exactly as it is.
+            Reject to <ScrollHighlight badge="Safe">leave the canvas exactly as it is</ScrollHighlight>.
           </DialogDescription>
         </DialogHeader>
 
+        {/* `min-h-0` is required: a flex child defaults to `min-height:auto` and refuses to
+            shrink below its content, which would defeat the overflow — the same footgun Phase 11
+            hit in the NodeEditor drawer. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="merge-title">Merged title</Label>
+          <Label htmlFor="merge-title">
+            <ScrollHighlight hue={40}>Merged title</ScrollHighlight>
+          </Label>
           <Input
             id="merge-title"
             value={mergedTitle}
@@ -161,6 +178,7 @@ export function MergeDialog({ bookId, sourceSceneIds, sourceScenes, open, onOpen
         {suggestion.error && (
           <p className="text-xs text-destructive">Merge suggestion failed: {suggestion.error}</p>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   )

@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SearchCombobox } from '@/components/ui/search-combobox'
 import {
   useCodexArcStates,
   useCodexEntries,
@@ -46,15 +47,18 @@ import {
 } from '@/lib/vocab'
 
 /** Keys inside `custom_fields` that are managed by dedicated controls elsewhere in this
- * dialog (Details tab's guided Select/traits, or the backend's arc-state bookkeeping) —
- * excluded from the free-form Custom Fields editor so users can't fight the guided UI. */
+ * dialog (Details tab's guided Role/Kind combobox and traits editor, or the backend's
+ * arc-state bookkeeping) — excluded from the free-form Custom Fields editor so users
+ * can't fight the guided UI. */
 const MANAGED_KEYS = new Set(['role', 'kind', 'traits'])
 function isManagedKey(key: string): boolean {
   return MANAGED_KEYS.has(key) || key.startsWith('arc_')
 }
 
-/** The kind-vocab Select for this entry's `entry_type` — none for object types without one
- * (there are none currently, but keep this shape future-proof). */
+/** The kind-vocab options for this entry's `entry_type` — none for object types without one
+ * (there are none currently, but keep this shape future-proof). The stored value is NOT
+ * restricted to these options (see the creatable `SearchCombobox` in `DetailsTab`); this
+ * only supplies the guided preset list. */
 function kindVocabFor(entryType: CodexEntry['entry_type']) {
   switch (entryType) {
     case 'character':
@@ -70,6 +74,15 @@ function kindVocabFor(entryType: CodexEntry['entry_type']) {
   }
 }
 
+/** Short badge text for an entry's type, shown next to its name in the relationship
+ * target picker so entries of every Codex type are distinguishable at a glance. */
+const ENTRY_TYPE_BADGE: Record<CodexEntry['entry_type'], string> = {
+  character: 'character',
+  location: 'location',
+  faction: 'faction',
+  object_lore: 'lore',
+}
+
 interface CustomFieldRow {
   key: string
   value: string
@@ -77,8 +90,10 @@ interface CustomFieldRow {
 
 /**
  * The full Codex entity editor (docs/06-ROADMAP.md Phase 3 task FE-7). Opened from
- * `CodexPanel` (FE-8 wires the trigger) with one existing entry. Five tabs: Details,
- * Custom Fields, Relationships, Image, Arc States.
+ * `CodexPanel` (FE-8 wires the trigger) with one existing entry. Three tabs: Details (a
+ * wide two-column view — name/description/role-or-kind/traits on the left, Relationships
+ * and Arc-over-time stacked on the right, so no tab-hopping is needed to cross-reference
+ * them while editing), Custom Fields, Image.
  *
  * All edits are explicit Save actions (no autosave/debounce) — matches the panel's
  * existing edit-mode pattern and never silently overwrites `custom_fields` keys owned by
@@ -97,7 +112,7 @@ export function CodexEntryDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{entry.name}</DialogTitle>
         </DialogHeader>
@@ -105,25 +120,24 @@ export function CodexEntryDialog({
           <TabsList className="w-full">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="fields">Custom Fields</TabsTrigger>
-            <TabsTrigger value="relationships">Relationships</TabsTrigger>
             <TabsTrigger value="image">Image</TabsTrigger>
-            <TabsTrigger value="arcs">Arc States</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details">
-            <DetailsTab entry={entry} />
+            <div className="grid gap-6 sm:grid-cols-2">
+              <DetailsTab entry={entry} />
+              <div className="flex flex-col gap-4 py-2">
+                <RelationshipsSection entry={entry} />
+                <Separator />
+                <ArcSection entry={entry} books={books} />
+              </div>
+            </div>
           </TabsContent>
           <TabsContent value="fields">
             <CustomFieldsTab entry={entry} />
           </TabsContent>
-          <TabsContent value="relationships">
-            <RelationshipsTab entry={entry} />
-          </TabsContent>
           <TabsContent value="image">
             <ImageTab entry={entry} />
-          </TabsContent>
-          <TabsContent value="arcs">
-            <ArcStatesTab entry={entry} books={books} />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -146,6 +160,7 @@ function DetailsTab({ entry }: { entry: CodexEntry }) {
       ? (entry.custom_fields.traits as unknown[]).map((value) => String(value))
       : [],
   )
+  const [customTraitInput, setCustomTraitInput] = useState('')
 
   useEffect(() => {
     setName(entry.name)
@@ -156,15 +171,40 @@ function DetailsTab({ entry }: { entry: CodexEntry }) {
         ? (entry.custom_fields.traits as unknown[]).map((value) => String(value))
         : [],
     )
+    setCustomTraitInput('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.id])
 
   const nameInvalid = name.trim().length === 0
+  const presetTraitValues = new Set(
+    CHARACTER_TRAITS.map((trait) => trait.value.toLowerCase()),
+  )
+  const customTraits = traits.filter((trait) => !presetTraitValues.has(trait.toLowerCase()))
 
   function toggleTrait(value: string) {
     setTraits((current) =>
       current.includes(value) ? current.filter((trait) => trait !== value) : [...current, value],
     )
+  }
+
+  function addCustomTrait() {
+    const value = customTraitInput.trim()
+    if (!value) return
+    const normalized = value.toLowerCase()
+    // Case-insensitive dedupe against both the preset trait vocab and whatever's already
+    // selected — "Brave" while "brave" is selected (preset or a prior custom trait) should
+    // be a no-op, not a near-duplicate chip. Preserve the typed casing only when it's genuinely new.
+    const isDuplicate =
+      presetTraitValues.has(normalized) ||
+      traits.some((trait) => trait.toLowerCase() === normalized)
+    if (!isDuplicate) {
+      setTraits((current) => [...current, value])
+    }
+    setCustomTraitInput('')
+  }
+
+  function removeTrait(value: string) {
+    setTraits((current) => current.filter((trait) => trait !== value))
   }
 
   function handleSave() {
@@ -198,12 +238,12 @@ function DetailsTab({ entry }: { entry: CodexEntry }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="codex-detail-summary">Summary</Label>
+        <Label htmlFor="codex-detail-summary">Description</Label>
         <Textarea
           id="codex-detail-summary"
           value={summary}
           onChange={(event) => setSummary(event.target.value)}
-          placeholder="Summary (optional)"
+          placeholder="Description (optional)"
           className="min-h-20"
         />
       </div>
@@ -211,18 +251,20 @@ function DetailsTab({ entry }: { entry: CodexEntry }) {
       {kindVocab && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="codex-detail-kind">{kindVocab.label}</Label>
-          <Select value={kindValue} onValueChange={setKindValue}>
-            <SelectTrigger id="codex-detail-kind" className="w-full">
-              <SelectValue placeholder={`Choose a ${kindVocab.label.toLowerCase()}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {kindVocab.options.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchCombobox
+            id="codex-detail-kind"
+            value={kindValue}
+            onValueChange={setKindValue}
+            options={kindVocab.options.map((option) => ({
+              value: option.value,
+              label: option.label,
+              sublabel: option.hint,
+            }))}
+            placeholder={`Choose a ${kindVocab.label.toLowerCase()}`}
+            searchPlaceholder={`Search or type a ${kindVocab.label.toLowerCase()}…`}
+            allowCustomValue
+            triggerAriaLabel={kindVocab.label}
+          />
         </div>
       )}
 
@@ -252,6 +294,44 @@ function DetailsTab({ entry }: { entry: CodexEntry }) {
                 </Badge>
               )
             })}
+            {customTraits.map((trait) => (
+              <Badge key={trait} variant="default" className="gap-1 py-0.5 pr-1">
+                {trait}
+                <button
+                  type="button"
+                  aria-label={`Remove trait ${trait}`}
+                  onClick={() => removeTrait(trait)}
+                  className="rounded-full p-0.5 hover:bg-primary-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Add a custom trait"
+              placeholder="Add a custom trait"
+              value={customTraitInput}
+              onChange={(event) => setCustomTraitInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  addCustomTrait()
+                }
+              }}
+              className="h-8 flex-1"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addCustomTrait}
+              disabled={!customTraitInput.trim()}
+            >
+              <Plus className="size-3.5" />
+              Add
+            </Button>
           </div>
         </div>
       )}
@@ -359,8 +439,11 @@ function CustomFieldsTab({ entry }: { entry: CodexEntry }) {
 }
 
 // ── Relationships ─────────────────────────────────────────────────────────
+// Rendered inside the Details tab's right-hand column (not its own tab) — see
+// `CodexEntryDialog` above. `candidates` intentionally spans every Codex entry type (not
+// just this entry's own type), matching how relationships already worked pre-redesign.
 
-function RelationshipsTab({ entry }: { entry: CodexEntry }) {
+function RelationshipsSection({ entry }: { entry: CodexEntry }) {
   const { data: relationships, isLoading } = useCodexRelationships(entry.id)
   const { data: allEntries } = useCodexEntries()
   const createRelationship = useCreateRelationship()
@@ -445,18 +528,20 @@ function RelationshipsTab({ entry }: { entry: CodexEntry }) {
       <div className="flex flex-col gap-2">
         <Label>Add relationship</Label>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={targetId} onValueChange={setTargetId}>
-            <SelectTrigger aria-label="Target entry" className="min-w-40 flex-1">
-              <SelectValue placeholder="Entry" />
-            </SelectTrigger>
-            <SelectContent>
-              {candidates.map((candidate) => (
-                <SelectItem key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchCombobox
+            value={targetId}
+            onValueChange={setTargetId}
+            options={candidates.map((candidate) => ({
+              value: candidate.id,
+              label: candidate.name,
+              badge: ENTRY_TYPE_BADGE[candidate.entry_type],
+            }))}
+            placeholder="Entry"
+            searchPlaceholder="Search entries…"
+            emptyMessage="No other entries yet."
+            triggerAriaLabel="Target entry"
+            className="min-w-40 flex-1"
+          />
           <Select value={relType} onValueChange={setRelType}>
             <SelectTrigger aria-label="Relationship type" className="min-w-40 flex-1">
               <SelectValue placeholder="Relationship" />
@@ -556,9 +641,11 @@ function ImageTab({ entry }: { entry: CodexEntry }) {
   )
 }
 
-// ── Arc States ───────────────────────────────────────────────────────────
+// ── Arc over time ────────────────────────────────────────────────────────
+// Rendered inside the Details tab's right-hand column (not its own tab) — see
+// `CodexEntryDialog` above.
 
-function ArcStatesTab({
+function ArcSection({
   entry,
   books,
 }: {
@@ -600,10 +687,14 @@ function ArcStatesTab({
 
   return (
     <div className="flex flex-col gap-3 py-2">
-      <p className="text-xs text-muted-foreground">
-        Arc states are point-in-time; only states at or before a scene's outline position
-        inform that scene (anti-spoiler).
-      </p>
+      <div className="flex flex-col gap-1">
+        <Label className="text-sm font-semibold">Arc over time</Label>
+        <p className="text-xs text-muted-foreground">
+          A spoiler-safe timeline of how this entry changes across the story. Each note only
+          reaches the AI for scenes at or after that story position, so later twists never
+          leak into earlier scenes.
+        </p>
+      </div>
 
       <ScrollArea className="max-h-56">
         <div className="flex flex-col gap-2 pr-2">

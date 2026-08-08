@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { EllipsisVertical, Pencil, Plus, Shuffle, Trash2 } from 'lucide-react'
@@ -49,9 +49,23 @@ import {
   type Book,
   type BookType,
 } from '@/queries/books'
+import { useSettings } from '@/queries/settings'
 import { LottiePlayer } from '@/lib/lottie'
 import { useDelight } from '@/lib/delight'
 import { cn } from '@/lib/utils'
+
+/**
+ * `sample_library` is a GLOBAL app-settings row written by the demo-data seeder
+ * (backend `settings_service.get_all_settings` merges every `user_id IS NULL` row
+ * into `GET /settings`, so it rides along with no API change). It is untyped JSON
+ * as far as the generated OpenAPI types are concerned, so narrow it defensively.
+ */
+function getSampleBookIds(value: unknown): ReadonlySet<string> {
+  if (typeof value !== 'object' || value === null) return new Set()
+  const bookIds = (value as Record<string, unknown>).book_ids
+  if (!Array.isArray(bookIds)) return new Set()
+  return new Set(bookIds.filter((id): id is string => typeof id === 'string'))
+}
 
 const BOOK_TYPES: { value: BookType; label: string }[] = [
   { value: 'story_book', label: 'Story Book' },
@@ -92,7 +106,13 @@ const itemVariants = {
 /** The Library (Phase 1 home): every book, with create/rename/convert/delete. */
 export function LibraryScreen() {
   const { data: books, isLoading } = useBooks()
+  const { data: settings } = useSettings()
   const [newOpen, setNewOpen] = useState(false)
+
+  const sampleBookIds = useMemo(
+    () => getSampleBookIds(settings?.sample_library),
+    [settings],
+  )
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -123,7 +143,7 @@ export function LibraryScreen() {
           variants={listVariants}
         >
           {books.map((book) => (
-            <BookCard key={book.id} book={book} />
+            <BookCard key={book.id} book={book} isSample={sampleBookIds.has(book.id)} />
           ))}
         </motion.div>
       )}
@@ -154,7 +174,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
-function BookCard({ book }: { book: Book }) {
+function BookCard({ book, isSample }: { book: Book; isSample: boolean }) {
   const navigate = useNavigate()
   const { motionOk } = useDelight()
   const [renameOpen, setRenameOpen] = useState(false)
@@ -179,9 +199,16 @@ function BookCard({ book }: { book: Book }) {
           <CardHeader className="grid-cols-[1fr_auto] items-start px-5">
             <div className="flex flex-col gap-1.5">
               <CardTitle className="text-base">{book.title}</CardTitle>
-              <Badge variant="secondary" className="w-fit">
-                {BOOK_TYPE_LABELS[book.book_type]}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="secondary" className="w-fit">
+                  {BOOK_TYPE_LABELS[book.book_type]}
+                </Badge>
+                {isSample && (
+                  <Badge variant="outline" className="w-fit">
+                    Sample
+                  </Badge>
+                )}
+              </div>
             </div>
             {/* Stops clicks from bubbling to the card's navigate handler (React's synthetic
                 events bubble through the component tree, not the DOM, so this must wrap the

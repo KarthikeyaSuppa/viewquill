@@ -30,6 +30,7 @@ from app.api import (
     images as images_api,
     import_export as import_export_api,
     llm as llm_api,
+    notes as notes_api,
     outline as outline_api,
     profiles as profiles_api,
     scenes as scenes_api,
@@ -43,6 +44,7 @@ from app.db.base import SessionLocal
 from app.db.migrate import run_migrations
 from app.services import backup_service
 from app.services.ollama_health import check_ollama
+from app.services.sample_library import seed_sample_library
 from app.services.structure_templates import seed_structure_templates
 
 logger = logging.getLogger("quillnight")
@@ -106,6 +108,19 @@ async def lifespan(app: FastAPI):
         logger.info("Structure templates seeded (%d new).", seeded)
     except Exception:  # noqa: BLE001 — seeding must never block startup
         logger.exception("Structure template seeding failed; continuing without it.")
+    # Prebaked sample library (Phase 14, PHASE14.md). Runs AFTER structure templates
+    # because each sample Book resolves its `structure_template_id` by template name.
+    # Self-guarding and idempotent: it no-ops unless the `sample_library` global setting
+    # is absent AND the `books` table is empty, so it never touches a real library and
+    # never resurrects samples the user deleted. Same non-fatal shape as above — a
+    # failed seed must leave the app usable, just empty.
+    try:
+        with SessionLocal() as db:
+            sample_books = seed_sample_library(db)
+        if sample_books:
+            logger.info("Sample library seeded (%d books).", sample_books)
+    except Exception:  # noqa: BLE001 — seeding must never block startup
+        logger.exception("Sample library seeding failed; continuing without it.")
     probe = check_ollama()
     logger.info("Ollama %s (%s)", "reachable" if probe.reachable else "unreachable", probe.detail)
     try:
@@ -164,6 +179,7 @@ def create_app() -> FastAPI:
     app.include_router(export_api.draft_versions_router)
     app.include_router(draft_preview_api.router)
     app.include_router(search_api.router)
+    app.include_router(notes_api.router)
 
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:

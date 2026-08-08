@@ -1,4 +1,4 @@
-import type { Theme } from '@/stores/theme'
+import { DARK_THEMES, type Theme } from '@/stores/theme'
 
 /**
  * Pure helpers that turn `app_settings` values (docs/03 + docs/10 §2) into live effects:
@@ -63,15 +63,21 @@ export const BG_TINTS: Record<'cream' | 'sand' | 'peach' | 'apricot', { day: str
   apricot: { day: '#fce8d8', night: '#201e23' },
 }
 
-/** Overwrites `--manuscript-bg` (index.css `.manuscript`) from the `bg_tint` + resolved theme. */
-export function applyBgTint(value: unknown, theme: 'day' | 'night'): void {
+/** Overwrites `--manuscript-bg` (index.css `.manuscript`) from the `bg_tint` + resolved theme.
+ * `BG_TINTS` only has a `day`/`night` column each (docs/10 §1 — warmth is a light-family-only
+ * affordance); Sunset/Sunrise map onto whichever column matches their light/dark family. */
+export function applyBgTint(value: unknown, theme: Theme): void {
   const key = value === 'cream' || value === 'sand' || value === 'peach' || value === 'apricot' ? value : 'cream'
-  document.documentElement.style.setProperty('--manuscript-bg', BG_TINTS[key][theme])
+  const col = DARK_THEMES.has(theme) ? 'night' : 'day'
+  document.documentElement.style.setProperty('--manuscript-bg', BG_TINTS[key][col])
 }
 
-/** 'auto' resolves to Night between 18:00–05:59 local time, Day otherwise (docs/10 §1). */
+/** 'auto' resolves to Night between 18:00–05:59 local time, Day otherwise (docs/10 §1); any
+ * of the four explicit themes (Day/Night/Sunset/Sunrise) resolve to themselves unchanged. */
 export function resolveTheme(themeMode: unknown): Theme {
-  if (themeMode === 'day' || themeMode === 'night') return themeMode
+  if (themeMode === 'day' || themeMode === 'night' || themeMode === 'sunset' || themeMode === 'sunrise') {
+    return themeMode
+  }
   const hour = new Date().getHours()
   return hour >= 18 || hour < 6 ? 'night' : 'day'
 }
