@@ -4,6 +4,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { playUiSound } from "@/lib/delight"
 
 function Dialog({
   ...props
@@ -53,6 +54,16 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  // Radix only mounts `DialogContent` into the portal while the dialog is open (no
+  // `forceMount` here), so mount = open, unmount = close — this effect never fires on
+  // first paint when the dialog starts closed, and fires exactly once per open/close.
+  React.useEffect(() => {
+    playUiSound("dialogs", "open")
+    return () => {
+      playUiSound("dialogs", "close")
+    }
+  }, [])
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />

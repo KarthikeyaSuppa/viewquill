@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { Tabs as TabsPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { playUiSound } from "@/lib/delight"
 
 function Tabs({
   className,
@@ -56,11 +57,24 @@ function TabsList({
 
 function TabsTrigger({
   className,
+  noSound = false,
+  onClick,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+}: React.ComponentProps<typeof TabsPrimitive.Trigger> & {
+  /** Opt this trigger out of the `tabs` switch cue. Deliberately opt-OUT so a new tab is
+   * never silently soundless by accident — used for the Book screen's Images and Draft
+   * tabs, which the user asked to stay quiet. */
+  noSound?: boolean
+}) {
+  function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!noSound) playUiSound("tabs")
+    onClick?.(event)
+  }
+
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
+      onClick={handleClick}
       className={cn(
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",

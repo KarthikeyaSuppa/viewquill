@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Library, LogOut, Search, Settings } from 'lucide-react'
+import { Library, LogOut, Search, Settings, StickyNote } from 'lucide-react'
 import { ThemePicker } from '@/components/theme-picker'
 import { SettingsProvider } from '@/components/settings-provider'
 import { ReadingComfortWizard } from '@/components/onboarding/reading-comfort-wizard'
@@ -126,6 +126,20 @@ export function AppShell() {
               Ctrl K
             </kbd>
           </button>
+
+          <NavLink
+            to="/notes"
+            className={({ isActive }) =>
+              cn(
+                NAV_ITEM_CLASS,
+                isActive &&
+                  'bg-primary/10 text-foreground ring-1 ring-primary/30 shadow-[0_0_16px_-2px_var(--primary)]',
+              )
+            }
+          >
+            <StickyNote className="size-4" />
+            Notes
+          </NavLink>
 
           <HelpGuide triggerClassName={NAV_ITEM_CLASS} />
         </nav>

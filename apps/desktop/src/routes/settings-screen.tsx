@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   Book,
@@ -10,6 +11,7 @@ import {
   Monitor,
   Palette,
   Sparkles,
+  StickyNote,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -27,13 +29,20 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { ReadingControls, type ReadingControlsValue } from '@/components/reading-controls'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import * as keyring from '@/lib/keyring'
 import { getLocalVoices } from '@/lib/speech'
+import { getFirebaseConfig } from '@/lib/firebase'
 import { BG_TINTS, READING_DEFAULTS, type DelightLevel } from '@/lib/apply-settings'
-import { useDelight } from '@/lib/delight'
+import {
+  normalizeSoundEffects,
+  useDelight,
+  type SoundEffectCategories,
+  type SoundEffectsMatrix,
+} from '@/lib/delight'
 import { useSettings, useUpdateSettings } from '@/queries/settings'
 import { useOnboardingWizardStore } from '@/stores/onboarding'
 import { cn } from '@/lib/utils'
@@ -41,7 +50,7 @@ import { cn } from '@/lib/utils'
 type ThemeMode = 'day' | 'night' | 'sunset' | 'sunrise' | 'auto'
 type AiMode = 'offline' | 'online' | 'hybrid'
 type BgTint = keyof typeof BG_TINTS
-type SectionId = 'reading' | 'voice' | 'theme' | 'ai' | 'delight'
+type SectionId = 'reading' | 'voice' | 'theme' | 'ai' | 'notes' | 'delight'
 
 const BG_TINT_OPTIONS: { value: BgTint; label: string }[] = [
   { value: 'cream', label: 'Cream' },
@@ -62,6 +71,20 @@ const DELIGHT_OPTIONS: { value: DelightLevel; label: string }[] = [
   { value: 'calm', label: 'Calm' },
   { value: 'standard', label: 'Standard' },
   { value: 'playful', label: 'Playful' },
+]
+
+// ── Sound effects matrix (per-delight-level, backend `sound_effects` setting) ──
+// The shape, defaults and normalizer all live in `lib/delight.ts` — that module is the
+// single frontend source of truth (it also drives `playUiSound`), so this screen imports
+// them rather than keeping a parallel copy that could silently drift from the audio engine
+// or from `settings_service.DEFAULT_SETTINGS["sound_effects"]` on the backend.
+type SoundCategory = keyof SoundEffectCategories
+
+const SOUND_CATEGORY_OPTIONS: { value: SoundCategory; label: string; hint: string }[] = [
+  { value: 'buttons', label: 'Buttons', hint: 'Click when you press a button' },
+  { value: 'tabs', label: 'Tab switches', hint: 'Cue when you switch tabs or panels' },
+  { value: 'dialogs', label: 'Dialogs', hint: 'Soft cue when a dialog opens or closes' },
+  { value: 'accents', label: 'Chimes & page turns', hint: 'Milestone chime, page-turn and writing sounds' },
 ]
 
 // AI mode copy per docs/08-AI-PROVIDER-MODES.md "The three modes".
@@ -87,8 +110,16 @@ const SECTIONS: { id: SectionId; label: string; icon: typeof Book }[] = [
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'theme', label: 'Theme', icon: Palette },
   { id: 'ai', label: 'AI & privacy', icon: Cpu },
+  { id: 'notes', label: 'Notes', icon: StickyNote },
   { id: 'delight', label: 'Delight', icon: Sparkles },
 ]
+
+/** Type guard for the `?section=` deep link (e.g. from `cloud-auth-panel.tsx`'s
+ * "Set up in Settings → Notes" button) — any unrecognized/missing value falls back to the
+ * default section rather than crashing on a bad query param. */
+function isSectionId(value: string | null): value is SectionId {
+  return value !== null && SECTIONS.some((s) => s.id === value)
+}
 
 /** The left section rail — same idiom as `help-guide.tsx`'s `HelpRail`: a real vertical
  * list of `<button>`s (not a `Tabs`/`TabsList`). The active state itself (`aria-current`,
@@ -139,10 +170,24 @@ export function SettingsScreen() {
   const { data: values, refetch: refetchSettings } = useSettings()
   const updateSettings = useUpdateSettings()
   const openWizard = useOnboardingWizardStore((s) => s.open)
+  const [searchParams] = useSearchParams()
 
-  const [activeSection, setActiveSection] = useState<SectionId>('reading')
+  // Deep-linkable so `cloud-auth-panel.tsx`'s "Set up in Settings → Notes" button can land
+  // directly on the right section (`?section=notes`) instead of always opening on Reading.
+  const [activeSection, setActiveSection] = useState<SectionId>(() => {
+    const fromQuery = searchParams.get('section')
+    return isSectionId(fromQuery) ? fromQuery : 'reading'
+  })
 
   const [reading, setReading] = useState<ReadingControlsValue>(READING_DEFAULTS)
+
+  // Notes section local state (T7+T8): the pasted Firebase web config is a publishable
+  // client config, not a secret — unlike the Groq key above, it's fine to keep it visible
+  // here and it's stored as a plain `app_settings` value (`firebase_web_config`), not the
+  // keyring. Draft-then-Save (not save-on-every-keystroke) so a half-pasted/invalid paste
+  // never touches settings.
+  const [firebaseConfigDraft, setFirebaseConfigDraft] = useState('')
+  const [firebaseConfigError, setFirebaseConfigError] = useState<string | null>(null)
 
   // AI section local state (docs/08). The key itself is only ever held here transiently
   // (cleared right after a successful Save) — it is never written to localStorage/SQLite,
@@ -197,6 +242,16 @@ export function SettingsScreen() {
     setTtsRateDraft(typeof values.tts_rate === 'number' ? values.tts_rate : 1.0)
   }, [values])
 
+  // Seed the Firebase config draft from the saved value, but only while the draft is still
+  // untouched (empty) — a `values` refetch triggered by some *other* settings change (they
+  // all share the same `['settings']` query key) must never clobber JSON the user is
+  // mid-pasting/mid-editing here. Mirrors the "never silently overwrite user data" rule.
+  useEffect(() => {
+    if (!values) return
+    const saved = typeof values.firebase_web_config === 'string' ? values.firebase_web_config : ''
+    setFirebaseConfigDraft((prev) => (prev === '' ? saved : prev))
+  }, [values])
+
   const themeMode: ThemeMode =
     values?.theme_mode === 'day' ||
     values?.theme_mode === 'night' ||
@@ -207,6 +262,11 @@ export function SettingsScreen() {
       : 'night'
   const delightLevel: DelightLevel =
     values?.delight_level === 'calm' || values?.delight_level === 'standard' ? values.delight_level : 'playful'
+  // Master kill-switch for every UI/accent sound (docs/10 §8) — defaults to on, matching
+  // the backend's `sounds_enabled` default. Not yet in the generated OpenAPI type, so read
+  // defensively rather than off `SettingsResponse['sounds_enabled']`.
+  const soundsEnabled = values?.sounds_enabled !== false
+  const soundEffects = normalizeSoundEffects(values?.sound_effects)
   const bgTint: BgTint =
     values?.bg_tint === 'cream' ||
     values?.bg_tint === 'sand' ||
@@ -300,6 +360,49 @@ export function SettingsScreen() {
     if (next !== (typeof values?.groq_model_name === 'string' ? values.groq_model_name : '')) {
       updateSettings.mutate({ groq_model_name: next.length > 0 ? next : null })
     }
+  }
+
+  // `getFirebaseConfig` (the same parser `cloud-auth-panel.tsx` uses) is the single source
+  // of truth for "is this string a usable config" — validated here before it's ever saved,
+  // so a malformed paste never reaches `app_settings` and confuses the Notes tab later.
+  const savedFirebaseConfig = typeof values?.firebase_web_config === 'string' ? values.firebase_web_config : null
+  const firebaseConfigured = getFirebaseConfig(savedFirebaseConfig) !== null
+
+  function handleSaveFirebaseConfig() {
+    const trimmed = firebaseConfigDraft.trim()
+    if (trimmed.length === 0) {
+      setFirebaseConfigError('Paste your Firebase web config JSON first.')
+      return
+    }
+    if (getFirebaseConfig(trimmed) === null) {
+      setFirebaseConfigError(
+        'Could not read that as a Firebase web config — make sure it is valid JSON with at least apiKey, projectId, and appId.',
+      )
+      return
+    }
+    setFirebaseConfigError(null)
+    updateSettings.mutate({ firebase_web_config: trimmed })
+    toast.success('Firebase config saved')
+  }
+
+  function handleClearFirebaseConfig() {
+    setFirebaseConfigError(null)
+    setFirebaseConfigDraft('')
+    updateSettings.mutate({ firebase_web_config: null })
+    toast.success('Firebase config cleared — cloud sync is now off')
+  }
+
+  // Sends the full normalized matrix (all 3 levels × 4 categories) on every toggle, never
+  // just the one changed cell — a partial PATCH could otherwise drop keys the backend
+  // hasn't seen yet (see `normalizeSoundEffects` above).
+  function handleSoundEffectToggle(level: DelightLevel, category: SoundCategory, checked: boolean) {
+    const next: SoundEffectsMatrix = {
+      calm: { ...soundEffects.calm },
+      standard: { ...soundEffects.standard },
+      playful: { ...soundEffects.playful },
+    }
+    next[level] = { ...next[level], [category]: checked }
+    updateSettings.mutate({ sound_effects: next })
   }
 
   return (
@@ -615,6 +718,102 @@ export function SettingsScreen() {
               </section>
             )}
 
+            {activeSection === 'notes' && (
+              <section className="glass glass-edge space-y-4 rounded-2xl p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-medium">Notes</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Optional cloud sync for the Notes tab's scratchpad, backed by your own
+                      Firebase project.
+                    </p>
+                  </div>
+                  <Badge variant={firebaseConfigured ? 'secondary' : 'outline'}>
+                    {firebaseConfigured ? 'Configured ✓' : 'Not configured'}
+                  </Badge>
+                </div>
+
+                <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <Cloud className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    This is completely isolated from the rest of the app — only your one Notes
+                    scratchpad ever syncs to the cloud, and only after you sign in with Google on
+                    the Notes tab. The rest of Quillnight (your Books, Codex, canvas, drafts)
+                    stays fully local, always.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-firebase-config">Firebase web config (JSON)</Label>
+                  <Textarea
+                    id="settings-firebase-config"
+                    value={firebaseConfigDraft}
+                    onChange={(e) => {
+                      setFirebaseConfigDraft(e.target.value)
+                      setFirebaseConfigError(null)
+                    }}
+                    placeholder={'{\n  "apiKey": "…",\n  "projectId": "…",\n  "appId": "…"\n}'}
+                    aria-invalid={firebaseConfigError !== null}
+                    className="min-h-32 font-mono text-xs"
+                  />
+                  {firebaseConfigError && (
+                    <p role="alert" className="text-xs text-destructive">
+                      {firebaseConfigError}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This is the publishable "web config" object from your Firebase project's app
+                    settings — it is not a secret, but Firestore's own security rules (see
+                    below) are still what actually keep your note private.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleSaveFirebaseConfig} disabled={updateSettings.isPending}>
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClearFirebaseConfig}
+                      disabled={updateSettings.isPending || !firebaseConfigured}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+
+                <details className="rounded-xl border border-border p-3 text-sm">
+                  <summary className="cursor-pointer font-medium">
+                    First time setting this up? Steps in Firebase console
+                  </summary>
+                  <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+                    <li>
+                      Create (or reuse) a Firebase project — <strong>use the same project</strong>{' '}
+                      the future Quillnight Android app will use, since they'll share this same
+                      cloud note.
+                    </li>
+                    <li>Enable Cloud Firestore (Native mode) for the project.</li>
+                    <li>Enable the Google sign-in provider under Authentication → Sign-in method.</li>
+                    <li>
+                      Add <code className="rounded bg-muted px-1">localhost</code> to Authentication
+                      → Settings → Authorized domains (needed for this desktop app's local dev
+                      server).
+                    </li>
+                    <li>
+                      Deploy the security rules from <code className="rounded bg-muted px-1">apps/desktop/firebase/firestore.rules</code>{' '}
+                      to Firestore — they restrict every note to its own signed-in owner.
+                    </li>
+                    <li>
+                      Register a Web app in Project settings, copy its config object, and paste
+                      it above.
+                    </li>
+                  </ol>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Full checklist: <code className="rounded bg-muted px-1">apps/desktop/firebase/README-provisioning.md</code>.
+                  </p>
+                </details>
+              </section>
+            )}
+
             {activeSection === 'delight' && (
               <section className="glass glass-edge space-y-3 rounded-2xl p-5">
                 <h2 className="text-base font-medium">Delight level</h2>
@@ -643,6 +842,99 @@ export function SettingsScreen() {
                     )
                   })}
                 </RadioGroup>
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label htmlFor="settings-sounds-enabled" className="text-sm font-medium">
+                        Sound effects
+                      </Label>
+                      <p id="settings-sounds-enabled-hint" className="text-xs text-muted-foreground">
+                        Turn off to silence every sound regardless of the settings below.
+                      </p>
+                    </div>
+                    <Switch
+                      id="settings-sounds-enabled"
+                      checked={soundsEnabled}
+                      aria-describedby="settings-sounds-enabled-hint"
+                      onCheckedChange={(checked) => updateSettings.mutate({ sounds_enabled: checked })}
+                    />
+                  </div>
+
+                  <div
+                    role="group"
+                    aria-labelledby="settings-sounds-enabled"
+                    aria-disabled={!soundsEnabled}
+                    aria-describedby={!soundsEnabled ? 'settings-sounds-enabled-hint' : undefined}
+                    className={cn(
+                      'overflow-hidden rounded-xl border border-border',
+                      !soundsEnabled && 'opacity-60',
+                    )}
+                  >
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="p-2 text-left text-xs font-medium text-muted-foreground">
+                            Category
+                          </th>
+                          {DELIGHT_OPTIONS.map((opt) => (
+                            <th
+                              key={opt.value}
+                              scope="col"
+                              className={cn(
+                                'p-2 text-center text-xs font-medium',
+                                opt.value === delightLevel
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-muted-foreground',
+                              )}
+                            >
+                              <span className="block">{opt.label}</span>
+                              {opt.value === delightLevel && (
+                                <span className="block text-[10px] font-semibold tracking-wide uppercase">
+                                  Current
+                                </span>
+                              )}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SOUND_CATEGORY_OPTIONS.map((cat) => (
+                          <tr key={cat.value} className="border-t border-border/60">
+                            <th scope="row" className="p-2 text-left align-top font-normal">
+                              <span className="block text-sm">{cat.label}</span>
+                              <span className="block text-xs text-muted-foreground">{cat.hint}</span>
+                            </th>
+                            {DELIGHT_OPTIONS.map((opt) => {
+                              const id = `settings-sound-${cat.value}-${opt.value}`
+                              return (
+                                <td
+                                  key={opt.value}
+                                  className={cn(
+                                    'p-2 text-center align-middle',
+                                    opt.value === delightLevel && 'bg-primary/5',
+                                  )}
+                                >
+                                  <Switch
+                                    id={id}
+                                    size="sm"
+                                    checked={soundEffects[opt.value][cat.value]}
+                                    disabled={!soundsEnabled}
+                                    aria-label={`${cat.label} sound at ${opt.label}`}
+                                    aria-describedby={!soundsEnabled ? 'settings-sounds-enabled-hint' : undefined}
+                                    onCheckedChange={(checked) =>
+                                      handleSoundEffectToggle(opt.value, cat.value, checked)
+                                    }
+                                  />
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </section>
             )}
           </div>

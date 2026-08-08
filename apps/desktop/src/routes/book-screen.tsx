@@ -106,10 +106,14 @@ export function BookScreen() {
             <TabsTrigger value="outline" ref={setTabItemRef('outline')}>
               Outline
             </TabsTrigger>
-            <TabsTrigger value="images" ref={setTabItemRef('images')}>
+            {/* Images and Draft switch silently (`noSound`) — user preference. They're the
+                two heaviest panels (thumbnail grid / full manuscript render), so the cue
+                landed alongside their load rather than on the press itself. Canvas,
+                Characters and Outline keep the normal tab cue. */}
+            <TabsTrigger value="images" ref={setTabItemRef('images')} noSound>
               Images
             </TabsTrigger>
-            <TabsTrigger value="draft" ref={setTabItemRef('draft')}>
+            <TabsTrigger value="draft" ref={setTabItemRef('draft')} noSound>
               Draft
             </TabsTrigger>
             <WobblyIndicator

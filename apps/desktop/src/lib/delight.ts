@@ -40,10 +40,14 @@ export interface Delight {
   /** False under reduced-motion OR at 'calm'. Gates view transitions, the ink-edge flow
    * animation, and the ambient firefly. */
   motionOk: boolean
-  /** False unless `sounds_enabled` AND delight_level === 'playful' AND motion is allowed.
-   * Callers must check this before calling any of the WebAudio helpers below — those
-   * helpers are pure sound generators and do not re-check settings themselves, so this
-   * flag is the single source of truth. */
+  /** False unless `sounds_enabled` AND the `accents` category is on for the current
+   * delight level (see `sound_effects` matrix below). Audio is not motion — reduced-motion
+   * is a vestibular/visual-animation preference, not a hearing one, so this deliberately
+   * does NOT check `prefers-reduced-motion` (explicit product decision). Callers must
+   * check this before calling any of the WebAudio helpers below — those helpers are pure
+   * sound generators and do not re-check settings themselves, so this flag is the single
+   * source of truth for the chime/page-turn/scribble "accent" family specifically; button/
+   * tab/dialog UI sounds are gated separately via `playUiSound()` below. */
   soundsOk: boolean
   /** Fires confetti for the given milestone. 'standard' only fires for `major`
    * milestones; 'playful' fires for all of them; 'calm' and reduced-motion never fire
@@ -62,11 +66,12 @@ export function useDelight(): Delight {
   const reduceMotion = useReducedMotion() ?? false
   const level = normalizeDelight(settings?.delight_level)
   const soundsEnabled = settings?.sounds_enabled !== false
+  const accentsOn = resolveSoundEffects(settings?.sound_effects, level).accents
 
   return useMemo(() => {
     const motionOk = level !== 'calm' && !reduceMotion
     const confettiAllowed = level !== 'calm' && !reduceMotion
-    const soundsOk = soundsEnabled && level === 'playful' && !reduceMotion
+    const soundsOk = soundsEnabled && accentsOn
 
     function fireConfetti(opts: { major?: boolean } = {}) {
       if (!confettiAllowed) return
@@ -87,7 +92,104 @@ export function useDelight(): Delight {
     }
 
     return { level, motionOk, soundsOk, fireConfetti, fireDelightAccent }
-  }, [level, reduceMotion, soundsEnabled])
+  }, [level, reduceMotion, soundsEnabled, accentsOn])
+}
+
+// ── UI sound matrix (`sound_effects` setting) ──────────────────────────────────────────
+// Backend contract (docs/10): `GET /settings` returns `sound_effects`, a per-delight-level
+// matrix of { buttons, tabs, dialogs, accents } booleans, e.g.
+//   { calm: {...all false}, standard: { buttons: true, tabs: true, dialogs: true, accents: false },
+//     playful: {...all true} }
+// `accents` covers the existing chime/page-turn/scribble family (see `soundsOk` above);
+// `buttons`/`tabs`/`dialogs` are the new per-primitive click/switch/open-close cues wired
+// in `components/ui/button.tsx` / `tabs.tsx` / `dialog.tsx`. Treated as untyped JSON and
+// narrowed defensively — the value may be missing or partially shaped while this setting
+// is new/rolling out.
+
+export type UiSoundCategory = 'buttons' | 'tabs' | 'dialogs'
+
+export interface SoundEffectCategories {
+  buttons: boolean
+  tabs: boolean
+  dialogs: boolean
+  accents: boolean
+}
+
+export type SoundEffectsMatrix = Record<DelightLevel, SoundEffectCategories>
+
+/** Mirrors `settings_service.DEFAULT_SETTINGS["sound_effects"]` on the backend. This module
+ * is the single frontend source of truth for the matrix shape — `routes/settings-screen.tsx`
+ * imports these rather than keeping its own copy, so the two can never drift apart. */
+export const DEFAULT_SOUND_EFFECTS: SoundEffectsMatrix = {
+  calm: { buttons: false, tabs: false, dialogs: false, accents: false },
+  standard: { buttons: true, tabs: true, dialogs: true, accents: false },
+  playful: { buttons: true, tabs: true, dialogs: true, accents: true },
+}
+
+function resolveLevel(raw: unknown, level: DelightLevel): SoundEffectCategories {
+  const fallback = DEFAULT_SOUND_EFFECTS[level]
+  if (typeof raw !== 'object' || raw === null) return fallback
+  const entry = (raw as Record<string, unknown>)[level]
+  if (typeof entry !== 'object' || entry === null) return fallback
+  const e = entry as Record<string, unknown>
+  return {
+    buttons: typeof e.buttons === 'boolean' ? e.buttons : fallback.buttons,
+    tabs: typeof e.tabs === 'boolean' ? e.tabs : fallback.tabs,
+    dialogs: typeof e.dialogs === 'boolean' ? e.dialogs : fallback.dialogs,
+    accents: typeof e.accents === 'boolean' ? e.accents : fallback.accents,
+  }
+}
+
+/** Narrows the raw `sound_effects` setting into a complete three-level matrix, falling back
+ * key-by-key to `DEFAULT_SOUND_EFFECTS` for anything missing/malformed. Used by the Settings
+ * screen, which edits all three levels at once and must always PATCH a whole matrix. */
+export function normalizeSoundEffects(raw: unknown): SoundEffectsMatrix {
+  return {
+    calm: resolveLevel(raw, 'calm'),
+    standard: resolveLevel(raw, 'standard'),
+    playful: resolveLevel(raw, 'playful'),
+  }
+}
+
+/** One level's categories — the hot path for `playUiSound`/`useDelight`. */
+function resolveSoundEffects(raw: unknown, level: DelightLevel): SoundEffectCategories {
+  return resolveLevel(raw, level)
+}
+
+// Module-level cache — deliberately NOT React state. `button.tsx`/`tabs.tsx`/`dialog.tsx`
+// render everywhere in the tree and must stay hook-free/cheap (they cannot call
+// `useSettings()`/`useDelight()` themselves), so `useSyncSoundPrefs()` below is mounted
+// exactly once (in `components/providers.tsx`) and writes here on every settings change;
+// `playUiSound()` is a plain function any primitive can call from a plain event handler.
+let uiSoundCache: { enabled: boolean; categories: SoundEffectCategories } = {
+  enabled: true,
+  categories: DEFAULT_SOUND_EFFECTS.playful,
+}
+
+/** Mount once app-wide (`components/providers.tsx`). Keeps the module-level `uiSoundCache`
+ * in sync with live settings so `playUiSound()` can be called from hook-free primitives. */
+export function useSyncSoundPrefs(): void {
+  const { data: settings } = useSettings()
+  const level = normalizeDelight(settings?.delight_level)
+  const enabled = settings?.sounds_enabled !== false
+  const categories = resolveSoundEffects(settings?.sound_effects, level)
+  uiSoundCache = { enabled, categories }
+}
+
+/** Plays the short click/switch/open-close cue for `category` if enabled for the current
+ * delight level. `variant` only matters for `'dialogs'` (open vs. close cue); ignored
+ * otherwise. Safe to call unconditionally from any event handler — no-ops when sounds are
+ * off, the category is disabled, or Web Audio is unavailable/blocked; never throws. */
+export function playUiSound(category: UiSoundCategory, variant?: 'open' | 'close'): void {
+  if (!uiSoundCache.enabled || !uiSoundCache.categories[category]) return
+  try {
+    if (category === 'buttons') playClick()
+    else if (category === 'tabs') playTabSwitch()
+    else if (variant === 'close') playDialogClose()
+    else playDialogOpen()
+  } catch {
+    // Web Audio unavailable/blocked — never let a UI sound break interaction.
+  }
 }
 
 // ── Asset-free sounds (Web Audio API) ──────────────────────────────────────────────────
@@ -149,6 +251,31 @@ export function playPageTurn(): void {
 export function playScribble(): void {
   const jitter = Math.random() * 120
   playTone(480 + jitter, 400 + jitter, 70, 0.022)
+}
+
+// ── UI primitive sounds (button/tab/dialog) ────────────────────────────────────────────
+// Distinct from the chime/page-turn/scribble "accent" family above — these fire constantly
+// (every click/tab-switch/dialog-open), so each is short (≤150ms) and quiet (peak gain
+// 0.02–0.04). Gated via `playUiSound()` above, never called directly by primitives.
+
+/** A very short, dry blip — button press. ~60ms. */
+function playClick(): void {
+  playTone(520, 480, 60, 0.03)
+}
+
+/** A brighter two-step upward cue — tab switch. ~110ms. */
+function playTabSwitch(): void {
+  playTone(600, 760, 110, 0.03)
+}
+
+/** A soft rising pair — dialog open. ~130ms. */
+function playDialogOpen(): void {
+  playTone(440, 660, 130, 0.035)
+}
+
+/** A soft falling pair — dialog close. ~130ms. */
+function playDialogClose(): void {
+  playTone(660, 440, 130, 0.03)
 }
 
 let scribbleTimer: ReturnType<typeof setInterval> | null = null

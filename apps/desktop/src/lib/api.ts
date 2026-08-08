@@ -75,6 +75,11 @@ export const api = {
   get: <T>(path: string, init?: RequestInit) => request<T>(path, init),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  /** Full-replace write — used by the Notes scratchpad's `PUT /notes/{channel}` contract
+   * (last-write-wins on `updated_at`), which is a resource replace rather than a partial
+   * patch. */
+  put: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
@@ -383,4 +388,43 @@ export interface ContinuityFlag {
   status: ContinuityStatus
   source: ContinuitySource | null
   created_at: string
+}
+
+// ── Notes (Notes tab, T3+T4): a tiny per-channel scratchpad synced over LAN today and
+// (a later task) cloud — `GET/PUT /notes/{channel}`, `channel` e.g. `'lan'`. Last-write-wins
+// on `updated_at` (epoch milliseconds, not an ISO string like the rest of this file — the
+// contract is fixed by the parallel backend task). See `src/lib/sync/adapter.ts`. ──
+export interface NoteResponse {
+  channel: string
+  content: string
+  updated_at: number
+  updated_by: string | null
+  rev: number
+}
+
+export interface NoteUpdateInput {
+  content: string
+  updated_at: number
+  updated_by: string
+}
+
+// ── Notes LAN pairing (Notes tab, T6): the sidecar's tiny local HTTP server that a phone on
+// the same Wi-Fi can hit directly to read/write the `lan` channel note — `POST
+// /notes/lan/share/start|stop`, `GET /notes/lan/share/status`. `qr_payload` is opaque to the
+// frontend; it's JSON.stringify'd straight into the QR code for the phone to scan. ──
+export interface LanShareStatus {
+  sharing: boolean
+  lan_port: number
+  host_ips: string[]
+}
+
+export interface LanShareStartResult {
+  lan_port: number
+  pairing_code: string
+  qr_payload: Record<string, unknown>
+  host_ips: string[]
+}
+
+export interface LanShareStopResult {
+  stopped: true
 }

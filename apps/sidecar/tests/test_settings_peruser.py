@@ -164,6 +164,88 @@ def test_focus_mode_round_trips_per_user(
     assert b_resp.json()["values"]["focus_mode"] is False
 
 
+# ── sound_effects (PER_USER JSON matrix): defaults, per-user scoping, normalization ────
+def test_sound_effects_defaults_match_documented_matrix(
+    client: TestClient, user_a_headers: dict[str, str]
+) -> None:
+    resp = client.get("/settings", headers=user_a_headers)
+    assert resp.status_code == 200
+    matrix = resp.json()["values"]["sound_effects"]
+    assert matrix == {
+        "calm": {"buttons": False, "tabs": False, "dialogs": False, "accents": False},
+        "standard": {"buttons": True, "tabs": True, "dialogs": True, "accents": False},
+        "playful": {"buttons": True, "tabs": True, "dialogs": True, "accents": True},
+    }
+
+
+def test_sound_effects_is_per_user(
+    client: TestClient, user_a_headers: dict[str, str], user_b_headers: dict[str, str]
+) -> None:
+    patch_resp = client.patch(
+        "/settings",
+        json={"values": {"sound_effects": {"calm": {"buttons": True}}}},
+        headers=user_a_headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["values"]["sound_effects"]["calm"]["buttons"] is True
+
+    # A sees their own override.
+    a_resp = client.get("/settings", headers=user_a_headers)
+    assert a_resp.json()["values"]["sound_effects"]["calm"]["buttons"] is True
+
+    # B still sees the default — A's personal override never leaked to B.
+    b_resp = client.get("/settings", headers=user_b_headers)
+    assert b_resp.json()["values"]["sound_effects"]["calm"]["buttons"] is False
+
+
+def test_sound_effects_partial_write_normalizes_to_full_matrix(
+    client: TestClient, user_a_headers: dict[str, str]
+) -> None:
+    patch_resp = client.patch(
+        "/settings",
+        json={"values": {"sound_effects": {"standard": {"buttons": False}}}},
+        headers=user_a_headers,
+    )
+    assert patch_resp.status_code == 200
+    matrix = patch_resp.json()["values"]["sound_effects"]
+
+    # The touched category/level round-trips.
+    assert matrix["standard"]["buttons"] is False
+    # The untouched categories in the same level fall back to defaults.
+    assert matrix["standard"]["tabs"] is True
+    assert matrix["standard"]["dialogs"] is True
+    assert matrix["standard"]["accents"] is False
+    # The untouched levels fall back to their full defaults.
+    assert matrix["calm"] == {"buttons": False, "tabs": False, "dialogs": False, "accents": False}
+    assert matrix["playful"] == {
+        "buttons": True,
+        "tabs": True,
+        "dialogs": True,
+        "accents": True,
+    }
+
+    # Re-read confirms the same normalized shape persists.
+    reread = client.get("/settings", headers=user_a_headers)
+    assert reread.json()["values"]["sound_effects"] == matrix
+
+
+@pytest.mark.parametrize("garbage_value", ["nope", 123])
+def test_sound_effects_garbage_value_falls_back_to_defaults(
+    client: TestClient, user_b_headers: dict[str, str], garbage_value: object
+) -> None:
+    patch_resp = client.patch(
+        "/settings",
+        json={"values": {"sound_effects": garbage_value}},
+        headers=user_b_headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["values"]["sound_effects"] == {
+        "calm": {"buttons": False, "tabs": False, "dialogs": False, "accents": False},
+        "standard": {"buttons": True, "tabs": True, "dialogs": True, "accents": False},
+        "playful": {"buttons": True, "tabs": True, "dialogs": True, "accents": True},
+    }
+
+
 # ── Unit level: pre-auth, user_id=None call path is unchanged ──────────────────
 def test_service_get_all_settings_with_no_user_id_is_global_only() -> None:
     """Direct call into settings_service (no HTTP, no bearer) — proves the pre-auth call

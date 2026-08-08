@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8756
 
+    # Port the SEPARATE LAN Notes server (app/lan/server.py) binds 0.0.0.0 on, but only
+    # while sharing is explicitly turned on (POST /notes/lan/share/start) — never at
+    # startup, never as a side effect of building the main 127.0.0.1-only app. Kept as its
+    # own setting (not reusing `port`) so the two servers can never collide even if a future
+    # change makes `port` dynamic.
+    lan_port: int = 8757
+
     # ── storage ───────────────────────────────────────────────────
     data_dir: Path = Field(default_factory=_default_data_dir)
 

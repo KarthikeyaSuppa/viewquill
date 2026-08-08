@@ -9,6 +9,7 @@ import {
   Map,
   ScrollText,
   Sparkles,
+  StickyNote,
   Users,
   X,
 } from 'lucide-react'
@@ -357,6 +358,97 @@ function CodexDiagram() {
 }
 
 /**
+ * NOTES diagram — a phone and this desktop app linked by two independent, both-ways
+ * paths that never meet: a solid line for the on-Wi-Fi (LAN) note and a dashed, primary-
+ * colored line for the anywhere (cloud) note. The point of drawing them as two separate
+ * lines rather than one line with a "mode" label is the same point the text makes: these
+ * are two completely separate notes with two separate clocks, not one sync path with a
+ * fallback.
+ */
+function NotesSyncDiagram() {
+  return (
+    <svg
+      viewBox="0 0 400 150"
+      className="h-auto w-full max-w-md"
+      role="img"
+      aria-label="Diagram: a phone and this desktop app connected by two separate paths, one for on-Wi-Fi sync and one for cloud sync"
+      style={{ fontFamily: 'inherit' }}
+    >
+      <title>Phone and desktop linked by an on-Wi-Fi path and a separate cloud path</title>
+      <defs>
+        <marker
+          id="help-notes-arrow"
+          viewBox="0 0 8 8"
+          refX="6"
+          refY="4"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L8,4 L0,8 Z" fill="var(--muted-foreground)" />
+        </marker>
+        <marker
+          id="help-notes-arrow-primary"
+          viewBox="0 0 8 8"
+          refX="6"
+          refY="4"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L8,4 L0,8 Z" fill="var(--primary)" />
+        </marker>
+      </defs>
+
+      {/* phone, left */}
+      <rect x={15} y={35} width={55} height={95} rx={10} fill="var(--card)" stroke="var(--border)" />
+      <circle cx={42.5} cy={120} r={4} fill="none" stroke="var(--muted-foreground)" strokeWidth="1.3" />
+      <text x={42.5} y={145} textAnchor="middle" fontSize="9" fill="var(--muted-foreground)">
+        Phone
+      </text>
+
+      {/* desktop, right */}
+      <rect x={330} y={45} width={60} height={42} rx={6} fill="var(--card)" stroke="var(--border)" />
+      <rect x={352} y={87} width={16} height={8} fill="var(--card)" stroke="var(--border)" />
+      <text x={360} y={145} textAnchor="middle" fontSize="9" fill="var(--muted-foreground)">
+        Desktop
+      </text>
+
+      {/* on-Wi-Fi (LAN) path */}
+      <line
+        x1={78}
+        y1={60}
+        x2={328}
+        y2={60}
+        stroke="var(--muted-foreground)"
+        strokeWidth="1.5"
+        markerStart="url(#help-notes-arrow)"
+        markerEnd="url(#help-notes-arrow)"
+      />
+      <text x={200} y={52} textAnchor="middle" fontSize="9" fontWeight={600} fill="var(--foreground)">
+        On your Wi-Fi
+      </text>
+
+      {/* anywhere (cloud) path */}
+      <line
+        x1={78}
+        y1={108}
+        x2={328}
+        y2={108}
+        stroke="var(--primary)"
+        strokeWidth="1.5"
+        strokeDasharray="4 3"
+        markerStart="url(#help-notes-arrow-primary)"
+        markerEnd="url(#help-notes-arrow-primary)"
+      />
+      <text x={200} y={100} textAnchor="middle" fontSize="9" fontWeight={600} fill="var(--primary)">
+        Anywhere (cloud)
+      </text>
+    </svg>
+  )
+}
+
+/**
  * ENHANCE diagram — the Accept/Reject diff flow: an "original" box, a sparkle arrow,
  * and a "suggestion" box with one removed word (struck) and one added word. This is
  * the visual for the app's never-silently-overwrite seam (`enhance-diff.tsx`), so the
@@ -675,6 +767,100 @@ function CodexSection() {
   )
 }
 
+/**
+ * Notes — the small cross-device scratchpad tab (between Search and Help). Two entirely
+ * separate notes, on-Wi-Fi and cloud, per `docs/18-NOTES-SYNC-CONTRACT.md` — this section
+ * exists mainly to make sure a reader never conflates the two, since they don't sync with
+ * each other and don't share a clock.
+ */
+function NotesSection() {
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <P>
+        Notes is a quick scratchpad, separate from your manuscript — jot something on your
+        phone, see it on your desktop a moment later. It's for a grocery list or a stray
+        idea, not for scenes, characters, or story text.
+      </P>
+
+      <NotesSyncDiagram />
+
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="outline">On your Wi-Fi</Badge>
+        <Badge variant="outline">Anywhere (cloud)</Badge>
+      </div>
+      <P>
+        These are two completely independent notes, each with its own clock — writing in
+        one never touches, overwrites, or syncs with the other.
+      </P>
+
+      <Separator />
+
+      <H3>On your Wi-Fi (no cloud)</H3>
+      <P>
+        Syncs directly between your desktop and your phone over the same Wi-Fi network —
+        nothing leaves your local network, and there's no account involved.
+      </P>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>
+          On the Notes tab's "On your Wi-Fi" pane, click{' '}
+          <strong className="text-foreground">"Set up device sync"</strong> and turn
+          sharing on.
+        </li>
+        <li>
+          On your phone, scan the QR code that appears, or type the 6-digit code shown
+          beside it if a camera isn't handy.
+        </li>
+        <li>Both devices need to be on the same Wi-Fi network for this to work.</li>
+        <li>
+          The first time you share, Windows may show a one-time firewall prompt — allow it
+          so your phone can reach your desktop.
+        </li>
+      </ul>
+
+      <Separator />
+
+      <H3>Anywhere (cloud)</H3>
+      <P>
+        Syncs through your own Firebase project, so it works from anywhere — even offline;
+        it catches up the moment you're back online.
+      </P>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>Create a free Firebase project (a from-zero checklist lives in "Settings → Notes").</li>
+        <li>
+          Paste its web config into <strong className="text-foreground">Settings → Notes</strong>.
+        </li>
+        <li>
+          Back on the Notes tab, click{' '}
+          <strong className="text-foreground">"Sign in with Google"</strong> in the
+          "Anywhere (cloud)" pane.
+        </li>
+      </ul>
+
+      <Example>
+        <p>
+          Jot <em>"call the printer about proofs"</em> on your phone on the way out. With
+          the Wi-Fi note paired, it's on your desktop by the time you sit back down; with
+          the cloud note signed in, it's there even if you weren't on your home network at
+          all.
+        </p>
+      </Example>
+
+      <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <strong className="text-foreground">Privacy:</strong>{' '}
+        <ScrollHighlight badge="Local-first">only the note itself ever syncs</ScrollHighlight>{' '}
+        — your books, scenes, and characters always stay fully local on this computer. The
+        cloud note is entirely opt-in; nothing reaches Firebase until you connect a project
+        and sign in.
+      </div>
+
+      <P>
+        A companion phone app is a separate app, built to the same sync contract — this
+        Notes tab is just the desktop half.
+      </P>
+    </div>
+  )
+}
+
 /** Reading comfort — per-profile Settings that tune the manuscript surface. */
 function ReadingComfortSection() {
   return (
@@ -882,6 +1068,7 @@ const TOPICS: Topic[] = [
   { id: 'start', label: 'Getting Started', icon: Compass, content: <GettingStartedSection /> },
   { id: 'canvas', label: 'Canvas', icon: Map, content: <CanvasSection /> },
   { id: 'codex', label: 'Codex', icon: BookOpen, content: <CodexSection /> },
+  { id: 'notes', label: 'Notes', icon: StickyNote, content: <NotesSection /> },
   { id: 'reading', label: 'Reading Comfort', icon: ScrollText, content: <ReadingComfortSection /> },
   { id: 'profiles', label: 'Profiles', icon: Users, content: <ProfilesSection /> },
   {
@@ -941,7 +1128,8 @@ function HelpRail({
 
 /**
  * In-app Help & Guide: a discoverable "?" entry that opens a scrollable walkthrough of the
- * whole app (getting started, Canvas, Codex, Reading Comfort, Profiles, shortcuts, tips).
+ * whole app (getting started, Canvas, Codex, Notes, Reading Comfort, Profiles, shortcuts,
+ * tips).
  * Static, self-contained content — no backend, no query.
  *
  * Two-pane layout: a left topic rail (`HelpRail`) and a right `ScrollArea` content pane,

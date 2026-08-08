@@ -141,13 +141,16 @@ Characters attached to a scene render as **circular chips** (image, else first ~
   (not a floating bottom-left card), entries shown as **circular chips**, with
   link-to-selected-node / edit / delete preserved.
 
-## P11. Character relationships are created/edited in the Relationships tab (single writer)
+## P11. Character relationships are created/edited in the character editor (single writer)
 
-- Each character's editor (`components/codex/codex-entry-dialog.tsx`, Relationships tab) is
-  the **single writer path** for `codex_relationships` — pick another character + a
+- Each character's editor (`components/codex/codex-entry-dialog.tsx`, `RelationshipsSection`)
+  is the **single writer path** for `codex_relationships` — pick another entry + a
   relationship type; create/delete via `useCreateRelationship` / `useDeleteRelationship`.
-  The Map (P9) only visualizes these rows. Do not add a second relationship-editing surface
-  (e.g. drag-to-connect on the map) without keeping the Relationships tab the source of truth.
+  As of 2026-08-09 this section lives in the **Details two-column rail** (it was a separate
+  "Relationships" tab when first written — see P20); the single-writer invariant is what
+  matters, not its tab location. The Map (P9) only visualizes these rows. Do not add a second
+  relationship-editing surface (e.g. drag-to-connect on the map) without keeping this section
+  the source of truth.
 
 ## P12. Canvas node action row: Duplicate (left), ⋯ (right), no inline Enhance
 
@@ -223,3 +226,96 @@ Characters attached to a scene render as **circular chips** (image, else first ~
   is **deliberately not cleared on unmount** so a delete initiated then interrupted (drawer
   closed mid-animation) still commits rather than being silently swallowed. Never reintroduce
   unmount-cleanup on that timer.
+
+---
+
+<!-- Added 2026-08-09 (locked via `spiderman`): the character/settings redesign and the
+     cross-device Notes feature. -->
+
+## P20. Codex character editor: wide two-column, creatable Role/Kind + custom traits, searchable relationships
+
+- `components/codex/codex-entry-dialog.tsx` is a **wide (`max-w-4xl`) two-column** dialog; the
+  standalone Relationships and Arc tabs were folded into the Details rail (three tabs remain:
+  Details / Custom Fields / Image). Do not narrow it back to the old cramped single-column
+  `max-w-2xl` layout.
+- The summary field is **labelled "Description"** in the UI (the API field is still `summary`).
+- **Role/Kind is a creatable combobox** and **traits accept custom values** — the curated
+  `lib/vocab.ts` lists are *suggestions*, not a fixed allow-list; any typed value is stored
+  (in the `custom_fields` JSON blob). Do not revert either to a fixed-enum `<Select>`.
+- The relationship-target picker is a **searchable, type-to-filter combobox**
+  (`components/ui/search-combobox.tsx`) over **all** codex entries (not just characters), with
+  full keyboard nav + combobox/listbox ARIA. Do not revert to the un-searchable `<Select>`
+  that listed every entry (the "scroll endlessly" regression).
+
+## P21. "Arc over time" is a spoiler-safe, point-in-time character timeline
+
+- The character editor's Arc section (`ArcSection` in `codex-entry-dialog.tsx`, backed by
+  `codex_arc_states`) records `status_summary` snapshots pinned to a `(book_id,
+  as_of_outline_order_index)` story position. **Load-bearing invariant:**
+  `apps/sidecar/app/services/prompt_builder.py` folds into a scene's AI context **only** arc
+  rows with `as_of_outline_order_index <= that scene's outline position** — so later-story
+  changes never leak into earlier scenes. Do not remove the arc feature or bypass/loosen the
+  outline-position filter. The "Arc over time" label + explainer are presentational only; the
+  data model and anti-spoiler filter are the protected part. See `docs/17 §4a`.
+
+## P22. Settings: two-pane layout + honest Local-vs-GroqCloud transparency
+
+- `routes/settings-screen.tsx` is a **two-pane** screen (left `SettingsRail` of sections +
+  right scrolling pane), mirroring the Help layout. Sections: Reading, Voice, Theme, AI &
+  privacy, Notes, Delight.
+- The **AI & privacy** section surfaces the local-first truth explicitly: a **Local model**
+  card (always-on, the default for every AI action, zero network) beside a **GroqCloud** card
+  (opt-in, needs the user's own key). This reflects the audited routing (default `ai_mode`
+  offline → local-only; remote requires both non-offline mode **and** a key).
+- **Honesty invariant (do not weaken):** the UI must **not** claim Zero-Data-Retention is
+  enforced per request — it isn't (`groq_zdr_enabled` is accepted but not transmitted; Groq
+  ZDR is an account-console setting). The GroqCloud copy + disclosure dialog must keep pointing
+  ZDR at the user's Groq account, never promise "never stores your work." Do not reintroduce a
+  retention guarantee the code can't back.
+
+## P23. Notes tab — a cross-device scratchpad with two independent notes; local-first everywhere else
+
+- A **Notes** nav item sits in the sidebar **between Search and Help** (`app-shell.tsx`,
+  `/notes` → `routes/notes-screen.tsx`). It hosts **two independent notes**: a **LAN note**
+  ("On your Wi-Fi", source of truth = local SQLite `notes` table, channel `'lan'`) and a
+  **Cloud note** ("Anywhere", source of truth = Firestore). Editing one never touches the other.
+- **Local-first boundary (do not weaken):** the Notes feature is the *only* part of Quillnight
+  that touches the network. Books, Codex, canvas, scenes, drafts, and images must **never** be
+  sent over LAN or cloud. Both notes carry only their own text + an LWW clock
+  (`{content, updated_at, updated_by}` / `{content, updatedAt, updatedBy, schemaVersion}`).
+- The sync layer is a pluggable seam — `lib/sync/adapter.ts` (`SyncAdapter`) with two impls
+  (`lan-adapter.ts`, `cloud-adapter.ts`); the note store is last-write-wins by the ms clock.
+  The mobile-app interface is frozen in `docs/18-NOTES-SYNC-CONTRACT.md` — keep the desktop
+  side compatible with that contract (Firestore `notes/{uid}` shape + rules; LAN pairing
+  handshake + `/pair` `/note` message shapes) so the separate Android app keeps working.
+
+## P24. LAN Notes server: hard isolation + pairing security (never expose the rest of the app)
+
+- The LAN note is served by a **separate, scoped ASGI app** (`apps/sidecar/app/lan/server.py`
+  `build_lan_app()`) that mounts **only** `POST /pair` + `GET/PUT /note` — it must **never**
+  import `create_app`/`app.api.*` or expose books/scenes/codex/any other data. The isolation
+  test (`tests/test_lan_isolation.py`) asserts the route set is exactly `{/pair, /note}`; keep
+  it passing.
+- It binds `0.0.0.0` **only while the user toggles sharing on** (default off) and is torn down
+  on stop + process shutdown. Security invariants (`app/lan/security.py`, `routes.py`): single-
+  use 6-digit pairing code (~120s TTL, ≤5 attempts, `secrets.compare_digest`), 256-bit bearer
+  `device_token` required on `/note`, unconditional `Origin`-header rejection on **both** routes
+  (anti-DNS-rebinding), required `X-Quillnight-LAN` header, no CORS on the LAN app, nothing
+  persisted to disk. Do not relax these or widen the LAN surface.
+- **Robustness invariant:** a bind failure (port in use) must surface as a caught error (409),
+  **never** crash the sidecar — `uvicorn`'s `SystemExit`-on-bind-fail is converted to a
+  catchable failure (`_guarded_startup`/`_LanBindFailure`), and `start_lan_server` cancels +
+  awaits + resets state on failure/timeout/cancellation so no orphaned listener wedges the port.
+  Covered by `tests/test_lan_server_lifecycle.py`; do not remove that guard or those tests.
+
+## P25. Cloud Notes network wall — one Firebase importer, publishable config only
+
+- `lib/firebase.ts` is the **sole** module in the frontend that imports the Firebase SDK — the
+  network wall. `cloud-adapter.ts` writes **only** `{content, updatedAt, updatedBy,
+  schemaVersion}` to `notes/{uid}`. The Python sidecar makes **zero** cloud calls. Do not add a
+  second Firebase importer or route cloud through the sidecar.
+- The Firebase **web config is publishable** (not a secret) and lives in `app_settings`
+  (`firebase_web_config`), **never** the keyring; no service-account secret is introduced.
+  Firestore rules (`apps/desktop/firebase/firestore.rules`) scope `notes/{uid}` to its owner
+  (`request.auth.uid == uid`). Google sign-in is opt-in; signed-out disables the cloud note but
+  the LAN note still works. Do not weaken the rules or the config/secret split.

@@ -12,7 +12,7 @@ import contextlib
 import logging
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -42,6 +42,13 @@ from app.api import (
 from app.config import get_settings
 from app.db.base import SessionLocal
 from app.db.migrate import run_migrations
+from app.lan import security as lan_security
+from app.lan.server import (
+    build_qr_payload,
+    get_share_status as get_lan_share_status,
+    start_lan_server,
+    stop_lan_server,
+)
 from app.services import backup_service
 from app.services.ollama_health import check_ollama
 from app.services.sample_library import seed_sample_library
@@ -136,6 +143,11 @@ async def lifespan(app: FastAPI):
         backup_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await backup_task
+        # Tear down the LAN Notes server (app/lan/server.py) if the user left sharing on —
+        # a running 0.0.0.0 listener must never outlive this process. `stop_lan_server` is a
+        # no-op when nothing is running, so this is safe even if sharing was never started.
+        await stop_lan_server()
+        lan_security.revoke_all()
         logger.info("Quillnight sidecar shutting down.")
 
 
@@ -184,6 +196,54 @@ def create_app() -> FastAPI:
     @app.get("/", tags=["health"])
     def root() -> dict[str, str]:
         return {"service": "quillnight-sidecar", "version": __version__, "docs": "/docs"}
+
+    # ── LAN Notes sharing controls (app/lan/*) — these three endpoints live on THIS main,
+    # 127.0.0.1-only app (unchanged host/CORS above); they merely control the lifecycle of a
+    # SEPARATE FastAPI app instance (app/lan/server.py's `build_lan_app()`) that binds
+    # 0.0.0.0 when (and only when) sharing is turned on. No note/book/scene/codex data is
+    # ever served from this app's own routes over LAN — this is purely start/stop/status.
+    @app.post("/notes/lan/share/start", tags=["notes"])
+    async def start_lan_share() -> dict:
+        """Starts the LAN server FIRST and only mints + returns a pairing code once
+        `start_lan_server` has confirmed the socket is genuinely listening — idempotent
+        (starting again while already running just mints a fresh pairing code without
+        double-binding, since `start_lan_server` no-ops if a server is already running).
+
+        If the port can't be bound (e.g. `lan_port` already in use — see
+        `app.lan.server.start_lan_server`'s readiness check), no pairing code is ever minted
+        and any previously-outstanding code/token is revoked so nothing lingers pointing at
+        a server that isn't actually up; the caller gets a clean 409 instead of a pairing
+        code for a dead listener.
+        """
+        try:
+            await start_lan_server()
+        except RuntimeError as exc:
+            lan_security.revoke_all()
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+        pairing_code = lan_security.start_pairing()
+        share_status = get_lan_share_status()
+        return {
+            "lan_port": share_status["lan_port"],
+            "pairing_code": pairing_code,
+            "qr_payload": build_qr_payload(pairing_code),
+            "host_ips": share_status["host_ips"],
+        }
+
+    @app.post("/notes/lan/share/stop", tags=["notes"])
+    async def stop_lan_share() -> dict:
+        """Stops the LAN server AND revokes every paired device token + any outstanding
+        pairing code in one call — turning sharing off always means every previously-paired
+        device loses access, not just that the listening socket closes."""
+        await stop_lan_server()
+        lan_security.revoke_all()
+        return {"stopped": True}
+
+    @app.get("/notes/lan/share/status", tags=["notes"])
+    def lan_share_status() -> dict:
+        """No secrets in this response — safe to poll freely. Deliberately omits the
+        pairing code/any token; those only ever appear in the `share/start` response."""
+        return get_lan_share_status()
 
     return app
 

@@ -43,6 +43,21 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "delight_level": "playful",  # calm | standard | playful
     "sounds_enabled": True,
     "mascot_enabled": True,
+    # Per-delight-level sound matrix. ``sounds_enabled`` above remains the master
+    # kill-switch (if False, nothing plays regardless of this matrix). Each level maps to
+    # four independent toggles:
+    #   buttons  — click blip on any Button press
+    #   tabs     — cue on tab/panel switch
+    #   dialogs  — soft open/close cue on dialogs & drawers
+    #   accents  — the pre-existing chime/page-turn/scribble family (previously hardcoded
+    #              to Playful-only, which is why only "playful" defaults it to True — this
+    #              preserves current behavior exactly)
+    # Calm is silent by default; Standard and Playful make noise (product decision).
+    "sound_effects": {
+        "calm": {"buttons": False, "tabs": False, "dialogs": False, "accents": False},
+        "standard": {"buttons": True, "tabs": True, "dialogs": True, "accents": False},
+        "playful": {"buttons": True, "tabs": True, "dialogs": True, "accents": True},
+    },
     # ── voice (docs/12) ──
     "dictation_hotkey": "CmdOrCtrl+Shift+Space",
     "stt_engine": "parakeet",  # parakeet | groq_whisper
@@ -73,9 +88,39 @@ PER_USER_KEYS = frozenset(
         "delight_level",
         "sounds_enabled",
         "mascot_enabled",
+        "sound_effects",
         "onboarding_complete",
     }
 )
+
+_SOUND_EFFECTS_LEVELS = ("calm", "standard", "playful")
+_SOUND_EFFECTS_CATEGORIES = ("buttons", "tabs", "dialogs", "accents")
+
+
+def _normalize_sound_effects(value: Any) -> dict[str, dict[str, bool]]:
+    """Deep-merges a stored ``sound_effects`` value over its defaults so a partial write
+    (e.g. only ``{"standard": {"buttons": False}}``) or a future added category never comes
+    back missing, and so a malformed/garbage stored value (wrong type, unexpected shape)
+    falls back to the full default matrix instead of raising or silently replacing it — this
+    is necessary because ``get_all_settings`` otherwise merges dict values wholesale, which
+    would let a partial stored object clobber the rest of the default shape."""
+    defaults = DEFAULT_SETTINGS["sound_effects"]
+    if not isinstance(value, dict):
+        return {level: dict(defaults[level]) for level in _SOUND_EFFECTS_LEVELS}
+    result: dict[str, dict[str, bool]] = {}
+    for level in _SOUND_EFFECTS_LEVELS:
+        level_defaults = defaults[level]
+        stored_level = value.get(level)
+        if not isinstance(stored_level, dict):
+            result[level] = dict(level_defaults)
+            continue
+        result[level] = {
+            category: bool(stored_level[category])
+            if category in stored_level and isinstance(stored_level[category], bool)
+            else level_defaults[category]
+            for category in _SOUND_EFFECTS_CATEGORIES
+        }
+    return result
 
 
 def get_all_settings(db: Session, user_id: str | None = None) -> dict[str, Any]:
@@ -100,6 +145,10 @@ def get_all_settings(db: Session, user_id: str | None = None) -> dict[str, Any]:
         for row in db.execute(user_stmt).scalars():
             merged[row.key] = row.value
     merged["groq_key_present"] = groq_key.is_present()
+    # sound_effects is stored/merged wholesale like every other key above, but a partial
+    # or malformed stored value would otherwise clobber the default shape entirely — see
+    # _normalize_sound_effects for why this always runs, even when nothing was ever stored.
+    merged["sound_effects"] = _normalize_sound_effects(merged["sound_effects"])
     return merged
 
 
